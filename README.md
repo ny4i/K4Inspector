@@ -52,25 +52,78 @@ tcp_port:add(YOUR_PORT, k4_proto)  -- Add your custom port
 
 ### Supported Commands
 
-The dissector parses and decodes the following K4 commands:
+The dissector parses and decodes **50+ K4 Direct commands** organized by category:
 
+#### Frequency & VFO Control
 - **FA/FB** - VFO A/B Frequency (displayed in MHz)
+- **UP/DN** - VFO Bump Up/Down
+- **BN** - Band Number (160m-6m)
+- **AB** - VFO Copy/Swap/Init
+
+#### Operating Mode
 - **MD** - Operating Mode (LSB, USB, CW, FM, AM, Data, CW-R, Data-R)
 - **DT** - Data Sub-mode (DATA A, AFSK A, FSK D, PSK D)
-- **IF** - Comprehensive Status Response (all transceiver parameters)
-- **KS** - CW Speed (WPM)
-- **KY** - CW Text Transmission
+- **DR** - Data Mode Baud Rate
+
+#### RIT/XIT & Split
 - **RT/XT** - RIT/XIT Enable/Disable
 - **RO** - RIT/XIT Offset (Hz)
-- **FT** - Split Mode
-- **TX/RX** - Transmit/Receive State
-- **BN** - Band Number (160m-6m)
-- **FP** - Filter Preset (1-5)
-- **AI** - Auto Information Level (0-5)
-- **ID** - Radio ID (identifies K4 as ID 17)
-- **UP/DN** - VFO Bump Up/Down
 - **RC** - Clear RIT/XIT
-- **OM** - Option Modules Query
+- **FT** - Split Mode
+- **LK** - VFO Lock
+
+#### Transmit/Receive
+- **TX/RX** - Transmit/Receive State
+- **TS** - TX Test Mode
+
+#### CW & Keying
+- **KS** - CW Speed (WPM)
+- **KY** - CW/DATA Message Text
+- **CW** - CW Pitch (Hz)
+
+#### Audio & Gain Controls
+- **AG** - AF Gain
+- **MG** - Microphone Gain
+- **RG** - RF Gain
+- **CP** - Speech Compression
+- **SQ** - Squelch
+
+#### Signal Processing
+- **GT** - AGC Mode (Off/Slow/Fast)
+- **PA** - Preamp (Off/10dB/18-20dB/Dual)
+- **RA** - RX Attenuator (dB)
+- **BW** - Receiver Bandwidth (Hz)
+- **NB** - Noise Blanker
+- **FP** - Filter Preset (1-5)
+
+#### Antenna & Hardware
+- **AN** - TX Antenna Selection
+- **AR** - RX Antenna Selection
+- **AT** - ATU Status (Bypass/Auto)
+
+#### Power & Monitoring
+- **PO** - Power Output (watts)
+- **SM** - S-Meter Reading
+
+#### Sub Receiver & Features
+- **SB** - Sub RX Enable
+- **SP** - Spot Enable/Disable
+
+#### Status & Configuration
+- **IF** - Basic Radio Information (comprehensive status)
+- **AI** - Auto Information Level (0-5)
+- **SI** - System Auto Info
+- **ID** - Radio ID (K4 = 17)
+- **OM** - Option Module Info (detailed hardware detection)
+
+#### System Control
+- **PS** - Power On/Off/Restart Control
+- **DA** - Digital Audio Control
+- **DM** - DTMF Tone
+- **FC** - Panadapter Center
+- **AF** - Audio Feedback
+
+See `K4-Protocol-Reference.md` for complete protocol specification and implementation details.
 
 ### VFO Support
 
