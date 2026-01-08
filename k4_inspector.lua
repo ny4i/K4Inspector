@@ -27,6 +27,17 @@ fields.ai_level = ProtoField.uint8("k4direct.ai_level", "AI Level", base.DEC)
 fields.radio_id = ProtoField.uint8("k4direct.radio_id", "Radio ID", base.DEC)
 fields.active_vfo = ProtoField.string("k4direct.active_vfo", "Active VFO")
 fields.scan_active = ProtoField.bool("k4direct.scan_active", "Scan Active")
+fields.om_string = ProtoField.string("k4direct.om_string", "OM Option String")
+fields.om_model = ProtoField.string("k4direct.om_model", "Radio Model")
+fields.om_atu = ProtoField.bool("k4direct.om_atu", "ATU (KAT4)")
+fields.om_pa = ProtoField.bool("k4direct.om_pa", "PA (KPA4)")
+fields.om_xvtr = ProtoField.bool("k4direct.om_xvtr", "XVTR (Transverter)")
+fields.om_subrx = ProtoField.bool("k4direct.om_subrx", "SUB RX (KRX4 + KDDC4)")
+fields.om_hdr = ProtoField.bool("k4direct.om_hdr", "HDR MODULE (KHDR4 + KDDC4-2)")
+fields.om_k40mini = ProtoField.bool("k4direct.om_k40mini", "K40 Mini")
+fields.om_linear = ProtoField.bool("k4direct.om_linear", "Linear Amp")
+fields.om_kpa1500 = ProtoField.bool("k4direct.om_kpa1500", "KPA1500 Amp")
+fields.om_k4id = ProtoField.bool("k4direct.om_k4id", "K4 Identifier")
 
 -- Mode value strings
 local mode_names = {
@@ -170,6 +181,142 @@ local function parse_if_command(msg, subtree, buffer, offset)
             end
         end
     end
+end
+
+-- Parse OM command (Option Modules)
+-- Format: "OM APXSHML14---;" where each position indicates an option module
+local function parse_om_command(data, subtree, buffer, offset, data_start)
+    if #data == 0 then return "OM" end
+
+    -- Skip leading space if present
+    local option_str = data
+    if option_str:sub(1,1) == " " then
+        option_str = option_str:sub(2)
+    end
+
+    -- Add the full option string
+    subtree:add(fields.om_string, buffer(offset + data_start - 1, #data), option_str)
+
+    local modules = {}
+    local radio_model = "K4"
+
+    -- Position 0: A = ATU (KAT4)
+    if #option_str > 0 and option_str:sub(1,1) == "A" then
+        subtree:add(fields.om_atu, buffer(offset + data_start - 1, 1), true)
+        table.insert(modules, "ATU")
+    else
+        subtree:add(fields.om_atu, buffer(offset + data_start - 1, 1), false)
+    end
+
+    -- Position 1: P = PA (KPA4)
+    if #option_str > 1 and option_str:sub(2,2) == "P" then
+        subtree:add(fields.om_pa, buffer(offset + data_start, 1), true)
+        table.insert(modules, "PA")
+    else
+        if #option_str > 1 then
+            subtree:add(fields.om_pa, buffer(offset + data_start, 1), false)
+        end
+    end
+
+    -- Position 2: X = XVTR (Transverter)
+    if #option_str > 2 and option_str:sub(3,3) == "X" then
+        subtree:add(fields.om_xvtr, buffer(offset + data_start + 1, 1), true)
+        table.insert(modules, "XVTR")
+    else
+        if #option_str > 2 then
+            subtree:add(fields.om_xvtr, buffer(offset + data_start + 1, 1), false)
+        end
+    end
+
+    -- Position 3: S = SUB RX (KRX4 + 2nd KDDC4, standard in K4D)
+    local has_subrx = false
+    if #option_str > 3 and option_str:sub(4,4) == "S" then
+        subtree:add(fields.om_subrx, buffer(offset + data_start + 2, 1), true)
+        table.insert(modules, "SUB RX")
+        has_subrx = true
+    else
+        if #option_str > 3 then
+            subtree:add(fields.om_subrx, buffer(offset + data_start + 2, 1), false)
+        end
+    end
+
+    -- Position 4: H = HDR MODULE (KHDR4 + KDDC4-2, standard in K4HD)
+    local has_hdr = false
+    if #option_str > 4 and option_str:sub(5,5) == "H" then
+        subtree:add(fields.om_hdr, buffer(offset + data_start + 3, 1), true)
+        table.insert(modules, "HDR")
+        has_hdr = true
+    else
+        if #option_str > 4 then
+            subtree:add(fields.om_hdr, buffer(offset + data_start + 3, 1), false)
+        end
+    end
+
+    -- Position 5: M = K40 Mini
+    if #option_str > 5 and option_str:sub(6,6) == "M" then
+        subtree:add(fields.om_k40mini, buffer(offset + data_start + 4, 1), true)
+        table.insert(modules, "K40 Mini")
+    else
+        if #option_str > 5 then
+            subtree:add(fields.om_k40mini, buffer(offset + data_start + 4, 1), false)
+        end
+    end
+
+    -- Position 6: L = Linear amp detected (generic)
+    -- Position 7: 1 = KPA1500 amp detected (specific)
+    local has_kpa1500 = (#option_str > 7 and option_str:sub(8,8) == "1")
+    local has_generic_linear = (#option_str > 6 and option_str:sub(7,7) == "L")
+
+    if has_kpa1500 then
+        if #option_str > 7 then
+            subtree:add(fields.om_kpa1500, buffer(offset + data_start + 6, 1), true)
+        end
+        table.insert(modules, "KPA1500")
+    else
+        if #option_str > 7 then
+            subtree:add(fields.om_kpa1500, buffer(offset + data_start + 6, 1), false)
+        end
+        if has_generic_linear then
+            if #option_str > 6 then
+                subtree:add(fields.om_linear, buffer(offset + data_start + 5, 1), true)
+            end
+            table.insert(modules, "Linear Amp")
+        else
+            if #option_str > 6 then
+                subtree:add(fields.om_linear, buffer(offset + data_start + 5, 1), false)
+            end
+        end
+    end
+
+    -- Position 8: 4 = K4 identifier
+    local has_k4id = false
+    if #option_str > 8 and option_str:sub(9,9) == "4" then
+        subtree:add(fields.om_k4id, buffer(offset + data_start + 7, 1), true)
+        has_k4id = true
+    else
+        if #option_str > 8 then
+            subtree:add(fields.om_k4id, buffer(offset + data_start + 7, 1), false)
+        end
+    end
+
+    -- Determine radio model based on options
+    if has_k4id then
+        if has_subrx and has_hdr then
+            radio_model = "K4HD"
+        elseif has_subrx then
+            radio_model = "K4D"
+        end
+    end
+
+    subtree:add(fields.om_model, buffer(offset, #data + data_start - 1), radio_model)
+
+    -- Build info string
+    local info = "OM " .. radio_model
+    if #modules > 0 then
+        info = info .. ": " .. table.concat(modules, ", ")
+    end
+
+    return info
 end
 
 -- Parse individual K4 command
@@ -342,11 +489,8 @@ local function parse_k4_command(msg, subtree, buffer, offset)
         info = "RC (Clear RIT/XIT)"
 
     elseif cmd == "OM" then
-        -- Option Modules
-        if #data > 0 then
-            subtree:add(fields.full_message, buffer(offset + data_start - 1, #data), data)
-            info = "OM " .. data
-        end
+        -- Option Modules - parse detailed option information
+        info = parse_om_command(data, subtree, buffer, offset, data_start)
 
     else
         -- Unknown command - just show the data
