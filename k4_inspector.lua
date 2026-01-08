@@ -131,7 +131,7 @@ local function parse_if_command(msg, subtree, buffer, offset)
         data = data:sub(2) -- Remove "$" for VFO B
     end
 
-    if #data < 35 then
+    if #data < 36 then
         subtree:add(fields.full_message, buffer(offset, #msg), msg)
         return "IF (incomplete)"
     end
@@ -199,11 +199,7 @@ local function parse_if_command(msg, subtree, buffer, offset)
     end
     pos = pos + 1
 
-    -- Active VFO
-    local vfo_char = data:sub(pos, pos)
-    local vfo_name = (vfo_char == "1") and "VFO B" or "VFO A"
-    subtree:add(fields.active_vfo, buffer(offset + pos + 1, 1), vfo_name)
-    table.insert(info_parts, vfo_name)
+    -- Skip literal "0"
     pos = pos + 1
 
     -- Scan active
