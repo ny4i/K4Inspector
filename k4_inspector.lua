@@ -387,9 +387,9 @@ local function parse_om_command(data, subtree, buffer, offset, data_start)
 end
 
 -- Parse individual K4 command
-local function parse_k4_command(msg, subtree, buffer, offset)
+local function parse_k4_command(msg, msg_subtree, buffer, offset)
     if #msg < 2 then
-        subtree:add(fields.full_message, buffer(offset, #msg), msg)
+        msg_subtree:add(fields.full_message, buffer(offset, #msg), msg)
         return msg
     end
 
@@ -407,8 +407,8 @@ local function parse_k4_command(msg, subtree, buffer, offset)
     local data = msg:sub(data_start)
 
     -- Add command and VFO
-    subtree:add(fields.command, buffer(offset, 2), cmd)
-    subtree:add(fields.vfo, buffer(offset, data_start - 1), vfo)
+    msg_subtree:add(fields.command, buffer(offset, 2), cmd)
+    msg_subtree:add(fields.vfo, buffer(offset, data_start - 1), vfo)
 
     local info = cmd
 
@@ -418,7 +418,8 @@ local function parse_k4_command(msg, subtree, buffer, offset)
         if #data == 11 then
             local freq = tonumber(data)
             if freq then
-                subtree:add(fields.frequency, buffer(offset + data_start - 1, 11), freq):append_text(" (" .. format_frequency(freq) .. ")")
+                local freq_item = subtree:add(fields.frequency, buffer(offset + data_start - 1, 11), freq)
+                freq_item:append_text(" (" .. format_frequency(freq) .. ")")
                 info = cmd .. " " .. format_frequency(freq)
             end
         end
