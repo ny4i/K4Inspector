@@ -389,7 +389,7 @@ end
 -- Parse individual K4 command
 local function parse_k4_command(msg, msg_subtree, buffer, offset)
     if #msg < 2 then
-        msg_msg_subtree:add(fields.full_message, buffer(offset, #msg), msg)
+        msg_subtree:add(fields.full_message, buffer(offset, #msg), msg)
         return msg
     end
 
@@ -407,8 +407,8 @@ local function parse_k4_command(msg, msg_subtree, buffer, offset)
     local data = msg:sub(data_start)
 
     -- Add command and VFO
-    msg_msg_subtree:add(fields.command, buffer(offset, 2), cmd)
-    msg_msg_subtree:add(fields.vfo, buffer(offset, data_start - 1), vfo)
+    msg_subtree:add(fields.command, buffer(offset, 2), cmd)
+    msg_subtree:add(fields.vfo, buffer(offset, data_start - 1), vfo)
 
     local info = cmd
 
