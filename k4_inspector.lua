@@ -401,7 +401,7 @@ function k4_proto.dissector(buffer, pinfo, tree)
 end
 
 -- Heuristic function to detect K4 protocol
-function k4_proto.heuristic(buffer, pinfo, tree)
+local function k4_heuristic(buffer, pinfo, tree)
     if buffer:len() < 3 then return false end
 
     local data = buffer():string()
@@ -445,7 +445,7 @@ local tcp_port = DissectorTable.get("tcp.port")
 tcp_port:add(9200, k4_proto)
 
 -- Also register heuristic dissector for unknown ports
-k4_proto:register_heuristic("tcp", k4_proto.heuristic)
+k4_proto:register_heuristic("tcp", k4_heuristic)
 
 -- Optionally register on additional ports if needed
 -- tcp_port:add(50001, k4_proto)  -- Example: add another port
