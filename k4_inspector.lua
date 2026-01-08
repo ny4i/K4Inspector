@@ -131,7 +131,8 @@ local function parse_if_command(msg, subtree, buffer, offset)
         data = data:sub(2) -- Remove "$" for VFO B
     end
 
-    if #data < 36 then
+    -- Spec says 36 chars, but trailing space may be trimmed
+    if #data < 35 then
         subtree:add(fields.full_message, buffer(offset, #msg), msg)
         return "IF (incomplete)"
     end
