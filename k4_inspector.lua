@@ -131,7 +131,7 @@ local function parse_if_command(msg, subtree, buffer, offset)
         data = data:sub(2) -- Remove "$" for VFO B
     end
 
-    if #data < 34 then
+    if #data < 35 then
         subtree:add(fields.full_message, buffer(offset, #msg), msg)
         return "IF (incomplete)"
     end
@@ -151,26 +151,17 @@ local function parse_if_command(msg, subtree, buffer, offset)
     -- Skip 5 spaces
     pos = pos + 5
 
-    -- RIT/XIT offset (sign + variable digits)
-    -- Spec says 4 digits (yyyy), but some firmware may send 6
+    -- RIT/XIT offset (sign + 4 digits)
     local sign_char = data:sub(pos, pos)
-    pos = pos + 1
-
-    -- Extract all consecutive digits for offset
-    local offset_str = ""
-    while pos <= #data and data:sub(pos, pos):match("%d") do
-        offset_str = offset_str .. data:sub(pos, pos)
-        pos = pos + 1
-    end
-
+    local offset_str = data:sub(pos + 1, pos + 4)
     local offset_val = tonumber(offset_str)
     if offset_val then
         if sign_char == "-" then
             offset_val = -offset_val
         end
-        local offset_len = 1 + #offset_str  -- sign + digits
-        subtree:add(fields.rit_offset, buffer(offset + pos - offset_len, offset_len), offset_val)
+        subtree:add(fields.rit_offset, buffer(offset + pos + 1, 5), offset_val)
     end
+    pos = pos + 5
 
     -- RIT enabled
     local rit_char = data:sub(pos, pos)
