@@ -38,6 +38,24 @@ fields.om_k40mini = ProtoField.bool("k4direct.om_k40mini", "K40 Mini")
 fields.om_linear = ProtoField.bool("k4direct.om_linear", "Linear Amp")
 fields.om_kpa1500 = ProtoField.bool("k4direct.om_kpa1500", "KPA1500 Amp")
 fields.om_k4id = ProtoField.bool("k4direct.om_k4id", "K4 Identifier")
+fields.power_output = ProtoField.uint16("k4direct.power_output", "Power Output (0.1W)", base.DEC)
+fields.cw_pitch = ProtoField.uint16("k4direct.cw_pitch", "CW Pitch (Hz)", base.DEC)
+fields.ag_gain = ProtoField.uint8("k4direct.ag_gain", "AF Gain", base.DEC)
+fields.mg_gain = ProtoField.uint8("k4direct.mg_gain", "Mic Gain", base.DEC)
+fields.rg_gain = ProtoField.uint8("k4direct.rg_gain", "RF Gain", base.DEC)
+fields.cp_level = ProtoField.uint8("k4direct.cp_level", "Speech Compression", base.DEC)
+fields.nb_level = ProtoField.uint8("k4direct.nb_level", "Noise Blanker", base.DEC)
+fields.sm_reading = ProtoField.uint8("k4direct.sm_reading", "S-Meter", base.DEC)
+fields.sq_level = ProtoField.uint8("k4direct.sq_level", "Squelch", base.DEC)
+fields.agc_mode = ProtoField.uint8("k4direct.agc_mode", "AGC Mode", base.DEC)
+fields.preamp = ProtoField.uint8("k4direct.preamp", "Preamp", base.DEC)
+fields.attenuator = ProtoField.uint8("k4direct.attenuator", "Attenuator", base.DEC)
+fields.bandwidth = ProtoField.uint16("k4direct.bandwidth", "Bandwidth (Hz)", base.DEC)
+fields.antenna = ProtoField.uint8("k4direct.antenna", "Antenna", base.DEC)
+fields.atu_status = ProtoField.uint8("k4direct.atu_status", "ATU Status", base.DEC)
+fields.vfo_lock = ProtoField.bool("k4direct.vfo_lock", "VFO Lock")
+fields.subrx_enabled = ProtoField.bool("k4direct.subrx_enabled", "Sub RX Enabled")
+fields.spot_enabled = ProtoField.bool("k4direct.spot_enabled", "Spot Enabled")
 
 -- Mode value strings
 local mode_names = {
@@ -73,6 +91,27 @@ local band_names = {
     [8] = "12m",
     [9] = "10m",
     [10] = "6m"
+}
+
+-- AGC mode value strings
+local agc_names = {
+    [0] = "Off",
+    [1] = "Slow",
+    [2] = "Fast"
+}
+
+-- Preamp value strings
+local preamp_names = {
+    [0] = "Off",
+    [1] = "10dB",
+    [2] = "18/20dB",
+    [3] = "Dual"
+}
+
+-- ATU status value strings
+local atu_names = {
+    [0] = "Bypass",
+    [1] = "Auto"
 }
 
 -- Format frequency for display (Hz to MHz)
@@ -519,6 +558,174 @@ local function parse_k4_command(msg, subtree, buffer, offset)
         -- Clear RIT/XIT
         info = "RC (Clear RIT/XIT)"
 
+    elseif cmd == "PO" then
+        -- Power Output (in tenths of watts)
+        local power = tonumber(data)
+        if power then
+            subtree:add(fields.power_output, buffer(offset + data_start - 1, #data), power)
+            info = string.format("PO %.1fW", power / 10.0)
+        end
+
+    elseif cmd == "CW" then
+        -- CW Pitch
+        local pitch = tonumber(data)
+        if pitch then
+            subtree:add(fields.cw_pitch, buffer(offset + data_start - 1, #data), pitch)
+            info = cmd .. " " .. pitch .. " Hz"
+        end
+
+    elseif cmd == "AG" then
+        -- AF Gain
+        local gain = tonumber(data)
+        if gain then
+            subtree:add(fields.ag_gain, buffer(offset + data_start - 1, #data), gain)
+            info = cmd .. " " .. gain
+        end
+
+    elseif cmd == "MG" then
+        -- Microphone Gain
+        local gain = tonumber(data)
+        if gain then
+            subtree:add(fields.mg_gain, buffer(offset + data_start - 1, #data), gain)
+            info = cmd .. " " .. gain
+        end
+
+    elseif cmd == "RG" then
+        -- RF Gain
+        local gain = tonumber(data)
+        if gain then
+            subtree:add(fields.rg_gain, buffer(offset + data_start - 1, #data), gain)
+            info = cmd .. " " .. gain
+        end
+
+    elseif cmd == "CP" then
+        -- Speech Compression
+        local level = tonumber(data)
+        if level then
+            subtree:add(fields.cp_level, buffer(offset + data_start - 1, #data), level)
+            info = cmd .. " " .. level
+        end
+
+    elseif cmd == "NB" then
+        -- Noise Blanker
+        local level = tonumber(data)
+        if level then
+            subtree:add(fields.nb_level, buffer(offset + data_start - 1, #data), level)
+            info = cmd .. " " .. level
+        end
+
+    elseif cmd == "SM" then
+        -- S-Meter
+        local reading = tonumber(data)
+        if reading then
+            subtree:add(fields.sm_reading, buffer(offset + data_start - 1, #data), reading)
+            info = cmd .. " S" .. reading
+        end
+
+    elseif cmd == "SQ" then
+        -- Squelch
+        local level = tonumber(data)
+        if level then
+            subtree:add(fields.sq_level, buffer(offset + data_start - 1, #data), level)
+            info = cmd .. " " .. level
+        end
+
+    elseif cmd == "GT" then
+        -- AGC Mode
+        local mode = tonumber(data)
+        if mode then
+            local agc_item = subtree:add(fields.agc_mode, buffer(offset + data_start - 1, #data), mode)
+            if agc_names[mode] then
+                agc_item:append_text(" (" .. agc_names[mode] .. ")")
+                info = cmd .. " " .. agc_names[mode]
+            end
+        end
+
+    elseif cmd == "PA" then
+        -- Preamp
+        local preamp = tonumber(data)
+        if preamp then
+            local pa_item = subtree:add(fields.preamp, buffer(offset + data_start - 1, #data), preamp)
+            if preamp_names[preamp] then
+                pa_item:append_text(" (" .. preamp_names[preamp] .. ")")
+                info = cmd .. " " .. preamp_names[preamp]
+            end
+        end
+
+    elseif cmd == "RA" then
+        -- RX Attenuator
+        local atten = tonumber(data)
+        if atten then
+            subtree:add(fields.attenuator, buffer(offset + data_start - 1, #data), atten)
+            info = cmd .. " " .. atten .. "dB"
+        end
+
+    elseif cmd == "BW" then
+        -- Bandwidth
+        local bw = tonumber(data)
+        if bw then
+            subtree:add(fields.bandwidth, buffer(offset + data_start - 1, #data), bw)
+            info = cmd .. " " .. bw .. " Hz"
+        end
+
+    elseif cmd == "AN" or cmd == "AR" then
+        -- Antenna (TX or RX)
+        local ant = tonumber(data)
+        if ant then
+            subtree:add(fields.antenna, buffer(offset + data_start - 1, #data), ant)
+            info = cmd .. " ANT" .. ant
+        end
+
+    elseif cmd == "AT" then
+        -- ATU Status
+        local status = tonumber(data)
+        if status then
+            local atu_item = subtree:add(fields.atu_status, buffer(offset + data_start - 1, #data), status)
+            if atu_names[status] then
+                atu_item:append_text(" (" .. atu_names[status] .. ")")
+                info = cmd .. " " .. atu_names[status]
+            end
+        end
+
+    elseif cmd == "LK" then
+        -- VFO Lock
+        local locked = (data == "1")
+        subtree:add(fields.vfo_lock, buffer(offset + data_start - 1, #data), locked)
+        info = cmd .. " " .. (locked and "On" or "Off")
+
+    elseif cmd == "SB" then
+        -- Sub RX
+        local enabled = (data == "1")
+        subtree:add(fields.subrx_enabled, buffer(offset + data_start - 1, #data), enabled)
+        info = cmd .. " " .. (enabled and "On" or "Off")
+
+    elseif cmd == "SP" then
+        -- Spot
+        local enabled = (data == "1")
+        subtree:add(fields.spot_enabled, buffer(offset + data_start - 1, #data), enabled)
+        info = cmd .. " " .. (enabled and "On" or "Off")
+
+    elseif cmd == "DA" then
+        -- Digital Audio Control
+        if #data > 0 then
+            subtree:add(fields.full_message, buffer(offset + data_start - 1, #data), data)
+            info = "DA " .. data
+        end
+
+    elseif cmd == "TS" then
+        -- TX Test Mode
+        local enabled = (data == "1")
+        subtree:add(fields.tx_state, buffer(offset + data_start - 1, #data), enabled)
+        info = cmd .. " " .. (enabled and "On" or "Off")
+
+    elseif cmd == "SI" or cmd == "PS" or cmd == "AB" or cmd == "AF" or
+           cmd == "DR" or cmd == "DM" or cmd == "FC" then
+        -- Commands with various formats - show raw data
+        if #data > 0 then
+            subtree:add(fields.full_message, buffer(offset + data_start - 1, #data), data)
+            info = cmd .. " " .. data
+        end
+
     elseif cmd == "OM" then
         -- Option Modules - parse detailed option information
         info = parse_om_command(data, subtree, buffer, offset, data_start)
@@ -589,7 +796,10 @@ local function k4_heuristic(buffer, pinfo, tree)
     local common_commands = {
         "FA", "FB", "MD", "IF", "KS", "KY", "RT", "XT", "RO",
         "FT", "TX", "RX", "BN", "FP", "AI", "ID", "UP", "DN",
-        "RC", "OM", "DT", "DA"
+        "RC", "OM", "DT", "DA", "PO", "CW", "AG", "MG", "RG",
+        "CP", "NB", "SM", "SQ", "GT", "PA", "RA", "BW", "AN",
+        "AR", "AT", "LK", "SB", "SP", "TS", "SI", "PS", "AB",
+        "AF", "DR", "DM", "FC"
     }
 
     local first_two = data:sub(1, 2)
