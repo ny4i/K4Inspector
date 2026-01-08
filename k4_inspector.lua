@@ -448,7 +448,7 @@ local function parse_k4_command(msg, msg_subtree, buffer, offset)
 
     elseif cmd == "IF" then
         -- Comprehensive status response
-        info = parse_if_command(msg, subtree, buffer, offset)
+        info = parse_if_command(msg, msg_subtree, buffer, offset)
 
     elseif cmd == "KS" then
         -- CW Speed
@@ -725,7 +725,7 @@ local function parse_k4_command(msg, msg_subtree, buffer, offset)
 
     elseif cmd == "OM" then
         -- Option Modules - parse detailed option information
-        info = parse_om_command(data, subtree, buffer, offset, data_start)
+        info = parse_om_command(data, msg_subtree, buffer, offset, data_start)
 
     else
         -- Unknown command - just show the data
