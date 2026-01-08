@@ -1,0 +1,31 @@
+# Wireshark capture files
+*.pcap
+*.pcapng
+*.cap
+
+# Wireshark temporary files
+*.pcap~
+*.pcapng~
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-*
+
+# Lua bytecode
+*.luac
+
+# Logs
+*.log
+
+# Backup files
+*.bak
+*.backup
