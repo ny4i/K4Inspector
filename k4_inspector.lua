@@ -94,16 +94,18 @@ local function parse_if_command(msg, subtree, buffer, offset)
 
     if #data < 34 then
         subtree:add(fields.full_message, buffer(offset, #msg), msg)
-        return
+        return "IF (incomplete)"
     end
 
     local pos = 1
+    local info_parts = {}
 
     -- Frequency (11 digits)
     local freq_str = data:sub(pos, pos + 10)
     local freq = tonumber(freq_str)
     if freq then
         subtree:add(fields.frequency, buffer(offset + pos + 1, 11), freq):append_text(" (" .. format_frequency(freq) .. ")")
+        table.insert(info_parts, format_frequency(freq))
     end
     pos = pos + 11
 
@@ -124,12 +126,14 @@ local function parse_if_command(msg, subtree, buffer, offset)
 
     -- RIT enabled
     local rit_char = data:sub(pos, pos)
-    subtree:add(fields.rit_enabled, buffer(offset + pos + 1, 1), rit_char == "1")
+    local rit_enabled = (rit_char == "1")
+    subtree:add(fields.rit_enabled, buffer(offset + pos + 1, 1), rit_enabled)
     pos = pos + 1
 
     -- XIT enabled
     local xit_char = data:sub(pos, pos)
-    subtree:add(fields.xit_enabled, buffer(offset + pos + 1, 1), xit_char == "1")
+    local xit_enabled = (xit_char == "1")
+    subtree:add(fields.xit_enabled, buffer(offset + pos + 1, 1), xit_enabled)
     pos = pos + 1
 
     -- Skip space and "00"
@@ -137,16 +141,21 @@ local function parse_if_command(msg, subtree, buffer, offset)
 
     -- TX/RX state
     local tx_char = data:sub(pos, pos)
-    subtree:add(fields.tx_state, buffer(offset + pos + 1, 1), tx_char == "1")
+    local is_tx = (tx_char == "1")
+    subtree:add(fields.tx_state, buffer(offset + pos + 1, 1), is_tx)
+    table.insert(info_parts, is_tx and "TX" or "RX")
     pos = pos + 1
 
     -- Mode
     local mode_char = data:sub(pos, pos)
     local mode_val = tonumber(mode_char)
+    local mode_name = nil
     if mode_val then
         local mode_item = subtree:add(fields.mode, buffer(offset + pos + 1, 1), mode_val)
         if mode_names[mode_val] then
             mode_item:append_text(" (" .. mode_names[mode_val] .. ")")
+            mode_name = mode_names[mode_val]
+            table.insert(info_parts, mode_name)
         end
     end
     pos = pos + 1
@@ -155,16 +164,25 @@ local function parse_if_command(msg, subtree, buffer, offset)
     local vfo_char = data:sub(pos, pos)
     local vfo_name = (vfo_char == "1") and "VFO B" or "VFO A"
     subtree:add(fields.active_vfo, buffer(offset + pos + 1, 1), vfo_name)
+    table.insert(info_parts, vfo_name)
     pos = pos + 1
 
     -- Scan active
     local scan_char = data:sub(pos, pos)
-    subtree:add(fields.scan_active, buffer(offset + pos + 1, 1), scan_char == "1")
+    local scan_active = (scan_char == "1")
+    subtree:add(fields.scan_active, buffer(offset + pos + 1, 1), scan_active)
+    if scan_active then
+        table.insert(info_parts, "SCAN")
+    end
     pos = pos + 1
 
     -- Split enabled
     local split_char = data:sub(pos, pos)
-    subtree:add(fields.split_enabled, buffer(offset + pos + 1, 1), split_char == "1")
+    local split_enabled = (split_char == "1")
+    subtree:add(fields.split_enabled, buffer(offset + pos + 1, 1), split_enabled)
+    if split_enabled then
+        table.insert(info_parts, "SPLIT")
+    end
     pos = pos + 1
 
     -- Skip band byte
@@ -178,9 +196,23 @@ local function parse_if_command(msg, subtree, buffer, offset)
             local datamode_item = subtree:add(fields.data_submode, buffer(offset + pos + 1, 1), datamode_val)
             if data_submode_names[datamode_val] then
                 datamode_item:append_text(" (" .. data_submode_names[datamode_val] .. ")")
+                if mode_name == "Data" or mode_name == "Data-R" then
+                    table.insert(info_parts, data_submode_names[datamode_val])
+                end
             end
         end
     end
+
+    -- Add RIT/XIT info if enabled
+    if rit_enabled and offset_val then
+        table.insert(info_parts, string.format("RIT%+d", offset_val))
+    end
+    if xit_enabled and offset_val then
+        table.insert(info_parts, string.format("XIT%+d", offset_val))
+    end
+
+    -- Build info string
+    return "IF: " .. table.concat(info_parts, ", ")
 end
 
 -- Parse OM command (Option Modules)
@@ -380,8 +412,7 @@ local function parse_k4_command(msg, subtree, buffer, offset)
 
     elseif cmd == "IF" then
         -- Comprehensive status response
-        parse_if_command(msg, subtree, buffer, offset)
-        info = "IF Status Response"
+        info = parse_if_command(msg, subtree, buffer, offset)
 
     elseif cmd == "KS" then
         -- CW Speed
