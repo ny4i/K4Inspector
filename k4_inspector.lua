@@ -10,7 +10,7 @@ local fields = k4_proto.fields
 fields.command = ProtoField.string("k4direct.command", "Command")
 fields.vfo = ProtoField.string("k4direct.vfo", "VFO")
 fields.full_message = ProtoField.string("k4direct.message", "Full Message")
-fields.frequency = ProtoField.uint64("k4direct.frequency", "Frequency (Hz)", base.DEC)
+fields.frequency = ProtoField.uint32("k4direct.frequency", "Frequency (Hz)", base.DEC)
 fields.mode = ProtoField.uint8("k4direct.mode", "Mode", base.DEC)
 fields.data_submode = ProtoField.uint8("k4direct.data_submode", "Data Sub-mode", base.DEC)
 fields.rit_offset = ProtoField.int16("k4direct.rit_offset", "RIT Offset (Hz)", base.DEC)
@@ -132,9 +132,11 @@ local function parse_if_command(msg, subtree, buffer, offset)
     end
 
     -- Spec says 36 chars, but trailing space may be trimmed
-    if #data < 35 then
-        subtree:add(fields.full_message, buffer(offset, #msg), msg)
-        return "IF (incomplete)"
+    -- Debug: show actual length
+    local data_len = #data
+    if data_len < 34 then
+        subtree:add(fields.full_message, buffer(offset, #msg), msg .. " [len=" .. data_len .. "]")
+        return "IF (incomplete, len=" .. data_len .. ")"
     end
 
     local pos = 1
@@ -144,7 +146,8 @@ local function parse_if_command(msg, subtree, buffer, offset)
     local freq_str = data:sub(pos, pos + 10)
     local freq = tonumber(freq_str)
     if freq then
-        subtree:add(fields.frequency, buffer(offset + pos + 1, 11), freq):append_text(" (" .. format_frequency(freq) .. ")")
+        local freq_item = subtree:add(fields.frequency, buffer(offset + pos + 1, 11), freq)
+        freq_item:append_text(" (" .. format_frequency(freq) .. ")")
         table.insert(info_parts, format_frequency(freq))
     end
     pos = pos + 11
@@ -392,6 +395,27 @@ local function parse_k4_command(msg, msg_subtree, buffer, offset)
     if #msg < 2 then
         msg_subtree:add(fields.full_message, buffer(offset, #msg), msg)
         return msg
+    end
+
+    -- Check for # commands (panadapter/display commands)
+    if msg:sub(1, 1) == "#" then
+        -- Extract full command name (up to first digit or special char)
+        local cmd_end = 2
+        while cmd_end <= #msg do
+            local c = msg:sub(cmd_end, cmd_end)
+            if c:match("[0-9%+%-/]") then
+                break
+            end
+            cmd_end = cmd_end + 1
+        end
+        local cmd = msg:sub(1, cmd_end - 1)
+        local data = msg:sub(cmd_end)
+
+        msg_subtree:add(fields.command, buffer(offset, #cmd), cmd)
+        if #data > 0 then
+            msg_subtree:add(fields.full_message, buffer(offset + #cmd, #data), data)
+        end
+        return cmd .. " " .. data
     end
 
     -- Extract command (2 letters)
@@ -764,10 +788,8 @@ function k4_proto.dissector(buffer, pinfo, tree)
         if #msg > 0 then
             local msg_len = #msg + 1 -- Include semicolon
             local msg_subtree = subtree:add(k4_proto, buffer(offset, msg_len), "Command: " .. msg .. ";")
-
             local info = parse_k4_command(msg, msg_subtree, buffer, offset)
             table.insert(info_parts, info)
-
             offset = offset + msg_len
         end
     end
