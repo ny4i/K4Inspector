@@ -1,10 +1,37 @@
 # K4 Direct Protocol Sample Captures
 
-This directory contains synthetic PCAP files for testing and demonstrating the K4Inspector dissector.
+This directory contains PCAP files for testing and demonstrating the K4Inspector dissector.
 
 ## Sample Files
 
-### 1. basic_commands.pcap
+### 1. liveK4.pcapng ⭐ **REAL CAPTURE**
+**Purpose:** Real-world K4 Direct protocol traffic from actual radio session
+**Source:** Live capture from K4 radio communication (155KB, actual production traffic)
+**Contains:**
+- Actual command sequences from real K4 usage
+- Real timing and packet ordering
+- TCP connection establishment and teardown
+- Multi-command packets as they occur in practice
+- Real-world data patterns and edge cases
+
+**Why this matters:**
+This is an actual tcpdump from K4 operation, not synthetic test data. Use this to verify the dissector handles real-world traffic patterns including:
+- TCP stream reassembly
+- Out-of-order packets (if any)
+- Realistic command frequency and timing
+- Actual radio responses vs idealized test data
+
+**Expected Results:**
+- All K4 Direct Protocol commands parse without Lua errors
+- Frequency, mode, status commands display correctly
+- No crashes or hangs on real packet patterns
+- Info column shows readable command summaries
+
+**This is the primary validation file** - if the dissector works on this, it works in production.
+
+---
+
+### 2. basic_commands.pcap (synthetic)
 **Purpose:** Test basic command parsing and request/response flow
 **Contains:**
 - `FA;` - Request VFO A frequency
@@ -27,7 +54,7 @@ tshark -r basic_commands.pcap -Y "k4direct.command == FA" -T fields -e k4direct.
 
 ---
 
-### 2. if_status.pcap
+### 3. if_status.pcap (synthetic)
 **Purpose:** Test comprehensive IF (status) command parsing
 **Contains:**
 - Multiple IF command queries and responses
@@ -55,7 +82,7 @@ tshark -r if_status.pcap -Y "k4direct.tx_state == 1"
 
 ---
 
-### 3. panadapter_commands.pcap
+### 4. panadapter_commands.pcap (synthetic)
 **Purpose:** Test # command (panadapter/display) parsing
 **Contains:**
 - `#SPN$46125;` - Set span to 46.125 kHz
@@ -78,7 +105,7 @@ tshark -r panadapter_commands.pcap -T fields -e k4direct.command
 
 ---
 
-### 4. mixed_session.pcap
+### 5. mixed_session.pcap (synthetic)
 **Purpose:** Test realistic multi-command usage session
 **Contains:**
 - Initial status queries: `IF;OM;`
@@ -101,7 +128,7 @@ tshark -r mixed_session.pcap -T fields -e k4direct.command | sort | uniq
 
 ---
 
-### 5. om_hardware.pcap
+### 6. om_hardware.pcap (synthetic)
 **Purpose:** Test OM (Option Module) hardware detection
 **Contains:**
 - `OM AP-S----4--;` - K4 with ATU, PA, SUB RX
@@ -194,12 +221,14 @@ def generate_new_test():
 
 ## Expected Behavior Summary
 
-| File | Packets | Commands Tested | Key Validation |
-|------|---------|----------------|----------------|
-| basic_commands.pcap | 5 | FA, FB, MD | Frequency parsing, VFO detection |
-| if_status.pcap | 6 | IF | All IF fields, TX/RX state |
-| panadapter_commands.pcap | 5 | #SPN$, #REF$, #AR, #VFA, #WFC$ | # command name extraction |
-| mixed_session.pcap | 11 | FA, MD, RT$, RO$, AG, RG, TX, RX, IF, OM | Multi-command packets |
-| om_hardware.pcap | 6 | OM | Hardware detection, model ID |
+| File | Type | Packets | Commands Tested | Key Validation |
+|------|------|---------|----------------|----------------|
+| **liveK4.pcapng** | **REAL** | **~varies** | **All real K4 traffic** | **Production validation** |
+| basic_commands.pcap | Synthetic | 5 | FA, FB, MD | Frequency parsing, VFO detection |
+| if_status.pcap | Synthetic | 6 | IF | All IF fields, TX/RX state |
+| panadapter_commands.pcap | Synthetic | 5 | #SPN$, #REF$, #AR, #VFA, #WFC$ | # command name extraction |
+| mixed_session.pcap | Synthetic | 11 | FA, MD, RT$, RO$, AG, RG, TX, RX, IF, OM | Multi-command packets |
+| om_hardware.pcap | Synthetic | 6 | OM | Hardware detection, model ID |
 
-**Total:** 33 packets across 5 files covering 20+ distinct command types.
+**Synthetic:** 33 packets across 5 files covering 20+ distinct command types.
+**Real-world:** 1 production capture (155KB) with actual K4 radio traffic.
