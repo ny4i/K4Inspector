@@ -166,10 +166,56 @@ Decoded fields include: frequency, RIT/XIT offset and enable status, TX/RX state
 
 ## Testing
 
+### Automated Testing
+
+Run the automated test suite to verify the dissector works correctly:
+
+```bash
+./run_tests.sh
+```
+
+This script:
+- Tests all sample captures in `samples/` directory
+- Verifies no Lua errors occur during parsing
+- Reports number of commands successfully parsed
+- Returns exit code 0 if all tests pass, 1 if any fail
+
+**Example output:**
+```
+==========================================
+K4Inspector Dissector Automated Tests
+==========================================
+
+Testing all sample captures...
+
+  liveK4.pcapng                  ✓ PASS (127 commands parsed)
+  basic_commands.pcap            ✓ PASS (5 commands parsed)
+  if_status.pcap                 ✓ PASS (6 commands parsed)
+  panadapter_commands.pcap       ✓ PASS (5 commands parsed)
+  mixed_session.pcap             ✓ PASS (11 commands parsed)
+  om_hardware.pcap               ✓ PASS (6 commands parsed)
+
+==========================================
+Test Results
+==========================================
+  Passed: 6
+  Failed: 0
+
+✓ All tests passed!
+```
+
+### Manual Testing
+
 1. Capture K4 traffic using Wireshark on the network interface connected to your K4
 2. Place sample `.pcap` or `.pcapng` files in the `samples/` directory for testing
 3. Open captures in Wireshark with the dissector installed
 4. Verify protocol decoding is correct by expanding the "K4 Direct Protocol" tree
+
+### Sample Captures
+
+See `samples/README.md` for details on included test captures:
+- **liveK4.pcapng** - Real production K4 traffic (155KB)
+- 5 synthetic captures covering specific protocol features
 
 ## Troubleshooting
 
