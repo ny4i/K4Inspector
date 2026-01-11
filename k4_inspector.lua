@@ -78,7 +78,30 @@ local data_submode_names = {
     [3] = "PSK D (Direct)"
 }
 
--- Band number value strings
+-- AGC mode names
+local agc_names = {
+    [0] = "Off",
+    [1] = "Slow",
+    [2] = "Medium",
+    [3] = "Fast"
+}
+
+-- Preamp names
+local preamp_names = {
+    [0] = "Off",
+    [1] = "10dB",
+    [2] = "18-20dB",
+    [3] = "Dual (Main 10dB + Sub 18-20dB)"
+}
+
+-- ATU status names
+local atu_names = {
+    [0] = "Bypass",
+    [1] = "Auto",
+    [2] = "Tune"
+}
+
+-- Band names
 local band_names = {
     [0] = "160m",
     [1] = "80m",
@@ -93,28 +116,7 @@ local band_names = {
     [10] = "6m"
 }
 
--- AGC mode value strings
-local agc_names = {
-    [0] = "Off",
-    [1] = "Slow",
-    [2] = "Fast"
-}
-
--- Preamp value strings
-local preamp_names = {
-    [0] = "Off",
-    [1] = "10dB",
-    [2] = "18/20dB",
-    [3] = "Dual"
-}
-
--- ATU status value strings
-local atu_names = {
-    [0] = "Bypass",
-    [1] = "Auto"
-}
-
--- Format frequency for display (Hz to MHz)
+-- Format frequency for display
 local function format_frequency(freq_hz)
     local freq_mhz = freq_hz / 1000000.0
     return string.format("%.6f MHz", freq_mhz)
@@ -186,211 +188,393 @@ local function parse_if_command(msg, subtree, buffer, offset)
     local tx_char = data:sub(pos, pos)
     local is_tx = (tx_char == "1")
     subtree:add(fields.tx_state, buffer(offset + pos + 1, 1), is_tx)
-    table.insert(info_parts, is_tx and "TX" or "RX")
+    if is_tx then
+        table.insert(info_parts, "TX")
+    else
+        table.insert(info_parts, "RX")
+    end
     pos = pos + 1
 
     -- Mode
     local mode_char = data:sub(pos, pos)
     local mode_val = tonumber(mode_char)
-    local mode_name = nil
     if mode_val then
         local mode_item = subtree:add(fields.mode, buffer(offset + pos + 1, 1), mode_val)
         if mode_names[mode_val] then
             mode_item:append_text(" (" .. mode_names[mode_val] .. ")")
-            mode_name = mode_names[mode_val]
-            table.insert(info_parts, mode_name)
+            table.insert(info_parts, mode_names[mode_val])
         end
     end
     pos = pos + 1
 
-    -- Skip literal "0"
+    -- Skip literal "0" for compatibility
     pos = pos + 1
 
     -- Scan active
     local scan_char = data:sub(pos, pos)
     local scan_active = (scan_char == "1")
     subtree:add(fields.scan_active, buffer(offset + pos + 1, 1), scan_active)
-    if scan_active then
-        table.insert(info_parts, "SCAN")
-    end
     pos = pos + 1
 
-    -- Split enabled
+    -- Split mode
     local split_char = data:sub(pos, pos)
     local split_enabled = (split_char == "1")
     subtree:add(fields.split_enabled, buffer(offset + pos + 1, 1), split_enabled)
-    if split_enabled then
-        table.insert(info_parts, "SPLIT")
-    end
     pos = pos + 1
 
-    -- Skip band byte
+    -- Skip band (1 char)
     pos = pos + 1
 
-    -- Data sub-mode
-    if pos <= #data then
-        local datamode_char = data:sub(pos, pos)
-        local datamode_val = tonumber(datamode_char)
-        if datamode_val then
-            local datamode_item = subtree:add(fields.data_submode, buffer(offset + pos + 1, 1), datamode_val)
-            if data_submode_names[datamode_val] then
-                datamode_item:append_text(" (" .. data_submode_names[datamode_val] .. ")")
-                if mode_name == "Data" or mode_name == "Data-R" then
-                    table.insert(info_parts, data_submode_names[datamode_val])
-                end
-            end
+    -- Data mode (0 = off, 1 = on)
+    local datamode_char = data:sub(pos, pos)
+    local datamode_val = tonumber(datamode_char)
+    if datamode_val and datamode_val > 0 then
+        local datamode_item = subtree:add(fields.data_submode, buffer(offset + pos + 1, 1), datamode_val)
+        if data_submode_names[datamode_val] then
+            datamode_item:append_text(" (" .. data_submode_names[datamode_val] .. ")")
         end
     end
 
-    -- Add RIT/XIT info if enabled
-    if rit_enabled and offset_val then
-        table.insert(info_parts, string.format("RIT%+d", offset_val))
-    end
-    if xit_enabled and offset_val then
-        table.insert(info_parts, string.format("XIT%+d", offset_val))
-    end
-
-    -- Build info string
-    return "IF: " .. table.concat(info_parts, ", ")
+    return "IF " .. table.concat(info_parts, ", ")
 end
 
--- Parse OM command (Option Modules)
+-- Parse OM command - Option Module info with hardware detection
 -- Format: "OM APXSHML14---;" where each position indicates an option module
 local function parse_om_command(data, subtree, buffer, offset, data_start)
     if #data == 0 then return "OM" end
 
-    -- Skip leading space if present
     local option_str = data
-    if option_str:sub(1,1) == " " then
-        option_str = option_str:sub(2)
-    end
-
-    -- Add the full option string
     subtree:add(fields.om_string, buffer(offset + data_start - 1, #data), option_str)
 
     local modules = {}
-    local radio_model = "K4"
 
-    -- Position 0: A = ATU (KAT4)
-    if #option_str > 0 and option_str:sub(1,1) == "A" then
+    -- Position 0: ATU (KAT4)
+    if option_str:sub(1, 1) == "A" then
         subtree:add(fields.om_atu, buffer(offset + data_start - 1, 1), true)
         table.insert(modules, "ATU")
-    else
+    elseif option_str:sub(1, 1) == "-" then
         subtree:add(fields.om_atu, buffer(offset + data_start - 1, 1), false)
     end
 
-    -- Position 1: P = PA (KPA4)
-    if #option_str > 1 and option_str:sub(2,2) == "P" then
+    -- Position 1: PA (KPA4)
+    if option_str:sub(2, 2) == "P" then
         subtree:add(fields.om_pa, buffer(offset + data_start, 1), true)
         table.insert(modules, "PA")
-    else
-        if #option_str > 1 then
-            subtree:add(fields.om_pa, buffer(offset + data_start, 1), false)
-        end
+    elseif option_str:sub(2, 2) ~= "" then
+        subtree:add(fields.om_pa, buffer(offset + data_start, 1), false)
     end
 
-    -- Position 2: X = XVTR (Transverter)
-    if #option_str > 2 and option_str:sub(3,3) == "X" then
+    -- Position 2: XVTR (Transverter)
+    if option_str:sub(3, 3) == "X" then
         subtree:add(fields.om_xvtr, buffer(offset + data_start + 1, 1), true)
         table.insert(modules, "XVTR")
-    else
-        if #option_str > 2 then
-            subtree:add(fields.om_xvtr, buffer(offset + data_start + 1, 1), false)
-        end
+    elseif option_str:sub(3, 3) ~= "" then
+        subtree:add(fields.om_xvtr, buffer(offset + data_start + 1, 1), false)
     end
 
-    -- Position 3: S = SUB RX (KRX4 + 2nd KDDC4, standard in K4D)
-    local has_subrx = false
-    if #option_str > 3 and option_str:sub(4,4) == "S" then
+    -- Position 3: SUB RX (KRX4 + KDDC4)
+    if option_str:sub(4, 4) == "S" then
         subtree:add(fields.om_subrx, buffer(offset + data_start + 2, 1), true)
         table.insert(modules, "SUB RX")
-        has_subrx = true
-    else
-        if #option_str > 3 then
-            subtree:add(fields.om_subrx, buffer(offset + data_start + 2, 1), false)
-        end
+    elseif option_str:sub(4, 4) ~= "" then
+        subtree:add(fields.om_subrx, buffer(offset + data_start + 2, 1), false)
     end
 
-    -- Position 4: H = HDR MODULE (KHDR4 + KDDC4-2, standard in K4HD)
-    local has_hdr = false
-    if #option_str > 4 and option_str:sub(5,5) == "H" then
+    -- Position 4: HDR MODULE (KHDR4 + KDDC4-2)
+    if option_str:sub(5, 5) == "H" then
         subtree:add(fields.om_hdr, buffer(offset + data_start + 3, 1), true)
         table.insert(modules, "HDR")
-        has_hdr = true
-    else
-        if #option_str > 4 then
-            subtree:add(fields.om_hdr, buffer(offset + data_start + 3, 1), false)
-        end
+    elseif option_str:sub(5, 5) ~= "" then
+        subtree:add(fields.om_hdr, buffer(offset + data_start + 3, 1), false)
     end
 
-    -- Position 5: M = K40 Mini
-    if #option_str > 5 and option_str:sub(6,6) == "M" then
+    -- Position 5: K40 Mini
+    if option_str:sub(6, 6) == "M" then
         subtree:add(fields.om_k40mini, buffer(offset + data_start + 4, 1), true)
         table.insert(modules, "K40 Mini")
-    else
-        if #option_str > 5 then
-            subtree:add(fields.om_k40mini, buffer(offset + data_start + 4, 1), false)
-        end
+    elseif option_str:sub(6, 6) ~= "" then
+        subtree:add(fields.om_k40mini, buffer(offset + data_start + 4, 1), false)
     end
 
-    -- Position 6: L = Linear amp detected (generic)
-    -- Position 7: 1 = KPA1500 amp detected (specific)
-    local has_kpa1500 = (#option_str > 7 and option_str:sub(8,8) == "1")
-    local has_generic_linear = (#option_str > 6 and option_str:sub(7,7) == "L")
-
-    if has_kpa1500 then
-        if #option_str > 7 then
+    -- Position 6/7: Linear Amp or KPA1500
+    if #option_str >= 8 then
+        if option_str:sub(8, 8) == "K" then
             subtree:add(fields.om_kpa1500, buffer(offset + data_start + 6, 1), true)
-        end
-        table.insert(modules, "KPA1500")
-    else
-        if #option_str > 7 then
+            table.insert(modules, "KPA1500")
+        elseif option_str:sub(8, 8) ~= "" then
             subtree:add(fields.om_kpa1500, buffer(offset + data_start + 6, 1), false)
-        end
-        if has_generic_linear then
-            if #option_str > 6 then
+            if option_str:sub(7, 7) == "L" then
                 subtree:add(fields.om_linear, buffer(offset + data_start + 5, 1), true)
-            end
-            table.insert(modules, "Linear Amp")
-        else
-            if #option_str > 6 then
+                table.insert(modules, "Linear")
+            elseif option_str:sub(7, 7) ~= "" then
                 subtree:add(fields.om_linear, buffer(offset + data_start + 5, 1), false)
             end
         end
     end
 
-    -- Position 8: 4 = K4 identifier
-    local has_k4id = false
-    if #option_str > 8 and option_str:sub(9,9) == "4" then
-        subtree:add(fields.om_k4id, buffer(offset + data_start + 7, 1), true)
-        has_k4id = true
-    else
-        if #option_str > 8 then
-            subtree:add(fields.om_k4id, buffer(offset + data_start + 7, 1), false)
+    -- Position 8: K4 Identifier (4 for basic, D for K4D high-performance DDC)
+    if #option_str >= 9 then
+        if option_str:sub(9, 9) == "4" then
+            subtree:add(fields.om_k4id, buffer(offset + data_start + 7, 1), true)
         end
     end
 
     -- Determine radio model based on options
-    if has_k4id then
-        if has_subrx and has_hdr then
-            radio_model = "K4HD"
-        elseif has_subrx then
-            radio_model = "K4D"
+    local radio_model = "K4"
+    if #option_str >= 10 and option_str:sub(10, 10) == "D" then
+        radio_model = "K4D"  -- High-performance DDC version
+        if option_str:sub(5, 5) == "H" then
+            radio_model = "K4HD"  -- K4D with HDR module
         end
     end
 
     subtree:add(fields.om_model, buffer(offset, #data + data_start - 1), radio_model)
 
-    -- Build info string
     local info = "OM " .. radio_model
     if #modules > 0 then
-        info = info .. ": " .. table.concat(modules, ", ")
+        info = info .. " [" .. table.concat(modules, ", ") .. "]"
     end
 
     return info
 end
 
--- Parse individual K4 command
+-- =============================================================================
+-- PARSER FUNCTIONS - Table-driven architecture
+-- Each parser follows signature: parse_XXX(cmd, data, msg_subtree, buffer, offset, data_start)
+-- Returns: info string for display
+-- =============================================================================
+
+-- Parse frequency command (FA, FB)
+local function parse_frequency(cmd, data, msg_subtree, buffer, offset, data_start)
+    if #data == 11 then
+        local freq = tonumber(data)
+        if freq then
+            local freq_item = msg_subtree:add(fields.frequency, buffer(offset + data_start - 1, 11), freq)
+            freq_item:append_text(" (" .. format_frequency(freq) .. ")")
+            return cmd .. " " .. format_frequency(freq)
+        end
+    end
+    return cmd
+end
+
+-- Parse boolean command (RT, XT, FT, LK, SB, SP, etc)
+local function parse_boolean(cmd, data, field, on_text, off_text)
+    return function(c, d, subtree, buffer, offset, data_start)
+        local enabled = (d == "1")
+        subtree:add(field, buffer(offset + data_start - 1, #d), enabled)
+        return c .. " " .. (enabled and (on_text or "On") or (off_text or "Off"))
+    end
+end
+
+-- Parse numeric value with unit suffix
+local function parse_numeric(cmd, data, field, unit, scale)
+    return function(c, d, subtree, buffer, offset, data_start)
+        local val = tonumber(d)
+        if val then
+            subtree:add(field, buffer(offset + data_start - 1, #d), val)
+            if scale then val = val * scale end
+            return c .. " " .. val .. (unit or "")
+        end
+        return c
+    end
+end
+
+-- Parse numeric value with name lookup
+local function parse_named_value(cmd, data, field, names)
+    return function(c, d, subtree, buffer, offset, data_start)
+        local val = tonumber(d)
+        if val then
+            local item = subtree:add(field, buffer(offset + data_start - 1, #d), val)
+            if names[val] then
+                item:append_text(" (" .. names[val] .. ")")
+                return c .. " " .. names[val]
+            end
+            return c .. " " .. val
+        end
+        return c
+    end
+end
+
+-- Parse offset command (RO - RIT/XIT offset)
+local function parse_offset(cmd, data, msg_subtree, buffer, offset, data_start)
+    if #data >= 5 then
+        local sign_char = data:sub(1, 1)
+        local offset_str = data:sub(2, 5)
+        local offset_val = tonumber(offset_str)
+        if offset_val then
+            if sign_char == "-" then
+                offset_val = -offset_val
+            end
+            msg_subtree:add(fields.rit_offset, buffer(offset + data_start - 1, #data), offset_val)
+            return cmd .. " " .. offset_val .. " Hz"
+        end
+    end
+    return cmd
+end
+
+-- Parse raw data (just show the data)
+local function parse_raw(cmd, data, msg_subtree, buffer, offset, data_start)
+    if #data > 0 then
+        msg_subtree:add(fields.full_message, buffer(offset + data_start - 1, #data), data)
+        return cmd .. " " .. data
+    end
+    return cmd
+end
+
+-- Parse no-data command (TX, RX, UP, DN, RC)
+local function parse_no_data(cmd, description)
+    return function(c, d, subtree, buffer, offset, data_start)
+        return description
+    end
+end
+
+-- Parse CW text command (KY)
+local function parse_cw_text(cmd, data, msg_subtree, buffer, offset, data_start)
+    if #data > 1 then
+        local cw_text = data:sub(2) -- Skip leading space
+        msg_subtree:add(fields.cw_text, buffer(offset + data_start, #cw_text), cw_text)
+        return cmd .. ' "' .. cw_text .. '"'
+    end
+    return cmd
+end
+
+-- Parse power output (PO - tenths of watts)
+local function parse_power(cmd, data, msg_subtree, buffer, offset, data_start)
+    local power = tonumber(data)
+    if power then
+        msg_subtree:add(fields.power_output, buffer(offset + data_start - 1, #data), power)
+        return string.format("PO %.1fW", power / 10.0)
+    end
+    return cmd
+end
+
+-- Parse ID command with K4 detection
+local function parse_id(cmd, data, msg_subtree, buffer, offset, data_start)
+    local radio_id = tonumber(data)
+    if radio_id then
+        local id_item = msg_subtree:add(fields.radio_id, buffer(offset + data_start - 1, #data), radio_id)
+        if radio_id == 17 then
+            id_item:append_text(" (K4)")
+            return "ID K4"
+        end
+        return "ID " .. radio_id
+    end
+    return cmd
+end
+
+-- =============================================================================
+-- COMMAND REGISTRY - Maps command codes to parser functions
+-- =============================================================================
+
+local command_parsers = {
+    -- Frequency
+    FA = parse_frequency,
+    FB = parse_frequency,
+
+    -- Mode & Data
+    MD = parse_named_value("MD", nil, fields.mode, mode_names),
+    DT = parse_named_value("DT", nil, fields.data_submode, data_submode_names),
+
+    -- RIT/XIT
+    RO = parse_offset,
+    RT = parse_boolean("RT", nil, fields.rit_enabled),
+    XT = parse_boolean("XT", nil, fields.xit_enabled),
+    RC = parse_no_data("RC", "RC (Clear RIT/XIT)"),
+
+    -- Split & VFO
+    FT = parse_boolean("FT", nil, fields.split_enabled),
+    LK = parse_boolean("LK", nil, fields.vfo_lock),
+    UP = parse_no_data("UP", "UP VFO Up"),
+    DN = parse_no_data("DN", "DN VFO Down"),
+
+    -- TX/RX
+    TX = parse_no_data("TX", "TX (Transmit)"),
+    RX = parse_no_data("RX", "RX (Receive)"),
+    TS = parse_boolean("TS", nil, fields.tx_state),
+
+    -- CW
+    KS = parse_numeric("KS", nil, fields.cw_speed, " WPM"),
+    KY = parse_cw_text,
+    CW = parse_numeric("CW", nil, fields.cw_pitch, " Hz"),
+
+    -- Band & Filter
+    BN = parse_named_value("BN", nil, fields.band_number, band_names),
+    FP = parse_numeric("FP", nil, fields.filter_preset),
+
+    -- Gain Controls
+    AG = parse_numeric("AG", nil, fields.ag_gain),
+    MG = parse_numeric("MG", nil, fields.mg_gain),
+    RG = parse_numeric("RG", nil, fields.rg_gain),
+    CP = parse_numeric("CP", nil, fields.cp_level),
+    NB = parse_numeric("NB", nil, fields.nb_level),
+    SQ = parse_numeric("SQ", nil, fields.sq_level),
+
+    -- Signal Processing
+    GT = parse_named_value("GT", nil, fields.agc_mode, agc_names),
+    PA = parse_named_value("PA", nil, fields.preamp, preamp_names),
+    RA = parse_numeric("RA", nil, fields.attenuator, "dB"),
+    BW = parse_numeric("BW", nil, fields.bandwidth, " Hz"),
+
+    -- Antenna & ATU
+    AN = parse_numeric("AN", nil, fields.antenna),
+    AR = parse_numeric("AR", nil, fields.antenna),
+    AT = parse_named_value("AT", nil, fields.atu_status, atu_names),
+
+    -- Power & Monitoring
+    PO = parse_power,
+    SM = parse_numeric("SM", nil, fields.sm_reading),
+
+    -- Sub Receiver & Features
+    SB = parse_boolean("SB", nil, fields.subrx_enabled),
+    SP = parse_boolean("SP", nil, fields.spot_enabled),
+
+    -- Configuration & Status
+    AI = parse_numeric("AI", nil, fields.ai_level),
+    ID = parse_id,
+
+    -- Raw data commands
+    DA = parse_raw,
+    SI = parse_raw,
+    PS = parse_raw,
+    AB = parse_raw,
+    AF = parse_raw,
+    DR = parse_raw,
+    DM = parse_raw,
+    FC = parse_raw,
+
+    -- Missing commands from real capture (add as raw for now)
+    ME = parse_raw, -- Menu Entry
+    AP = parse_raw, -- Auto Peak
+    TD = parse_raw, -- TX Delay
+    NR = parse_raw, -- Noise Reduction
+    NM = parse_raw, -- Notch Mode
+    NA = parse_raw, -- Notch Auto
+    MA = parse_raw, -- Manual Notch
+    IS = parse_raw, -- IF Shift
+    VI = parse_raw, -- Voice Input
+    VG = parse_raw, -- VOX Gain
+    TG = parse_raw, -- TX Gain
+    TE = parse_raw, -- TX Enable
+    TA = parse_raw, -- TX Antenna
+    SD = parse_raw, -- CW Sidetone
+    RE = parse_raw, -- Receiver Enable
+    PC = parse_raw, -- Power Control
+    MS = parse_raw, -- Monitor/Sidetone
+    MI = parse_raw, -- Mic Input
+    LO = parse_raw, -- Lock
+    LI = parse_raw, -- Line Input
+    KP = parse_raw, -- Keyer Paddle
+    FX = parse_raw, -- Fixed/Tracking
+    ES = parse_raw, -- Error Status
+    DV = parse_raw, -- Diversity
+    DO = parse_raw, -- Data Output
+    BI = parse_raw, -- Band Info
+    VX = parse_raw, -- VOX
+    PL = parse_raw, -- PL Tone
+    FI = parse_raw, -- Filter
+}
+
+-- Parse individual K4 command using table-driven dispatch
 local function parse_k4_command(msg, msg_subtree, buffer, offset)
     if #msg < 2 then
         msg_subtree:add(fields.full_message, buffer(offset, #msg), msg)
@@ -399,13 +583,10 @@ local function parse_k4_command(msg, msg_subtree, buffer, offset)
 
     -- Check for # commands (panadapter/display commands)
     if msg:sub(1, 1) == "#" then
-        -- Extract full command name (up to first digit or special char)
         local cmd_end = 2
         while cmd_end <= #msg do
             local c = msg:sub(cmd_end, cmd_end)
-            if c:match("[0-9%+%-/]") then
-                break
-            end
+            if c:match("[0-9%+%-/]") then break end
             cmd_end = cmd_end + 1
         end
         local cmd = msg:sub(1, cmd_end - 1)
@@ -435,327 +616,23 @@ local function parse_k4_command(msg, msg_subtree, buffer, offset)
     msg_subtree:add(fields.command, buffer(offset, 2), cmd)
     msg_subtree:add(fields.vfo, buffer(offset, data_start - 1), vfo)
 
-    local info = cmd
-
-    -- Parse based on command type
-    if cmd == "FA" or cmd == "FB" then
-        -- Frequency VFO A or B
-        if #data == 11 then
-            local freq = tonumber(data)
-            if freq then
-                local freq_item = msg_subtree:add(fields.frequency, buffer(offset + data_start - 1, 11), freq)
-                freq_item:append_text(" (" .. format_frequency(freq) .. ")")
-                info = cmd .. " " .. format_frequency(freq)
-            end
-        end
-
-    elseif cmd == "MD" then
-        -- Mode
-        local mode_val = tonumber(data)
-        if mode_val then
-            local mode_item = msg_subtree:add(fields.mode, buffer(offset + data_start - 1, #data), mode_val)
-            if mode_names[mode_val] then
-                mode_item:append_text(" (" .. mode_names[mode_val] .. ")")
-                info = cmd .. " " .. mode_names[mode_val]
-            end
-        end
-
-    elseif cmd == "DT" then
-        -- Data sub-mode
-        local submode_val = tonumber(data)
-        if submode_val then
-            local submode_item = msg_subtree:add(fields.data_submode, buffer(offset + data_start - 1, #data), submode_val)
-            if data_submode_names[submode_val] then
-                submode_item:append_text(" (" .. data_submode_names[submode_val] .. ")")
-                info = cmd .. " " .. data_submode_names[submode_val]
-            end
-        end
-
-    elseif cmd == "IF" then
-        -- Comprehensive status response
+    -- Special cases that need different call signatures
+    local info
+    if cmd == "IF" then
         info = parse_if_command(msg, msg_subtree, buffer, offset)
-
-    elseif cmd == "KS" then
-        -- CW Speed
-        local speed = tonumber(data)
-        if speed then
-            msg_subtree:add(fields.cw_speed, buffer(offset + data_start - 1, #data), speed)
-            info = cmd .. " " .. speed .. " WPM"
-        end
-
-    elseif cmd == "KY" then
-        -- CW Text (text follows space)
-        if #data > 1 then
-            local cw_text = data:sub(2) -- Skip leading space
-            msg_subtree:add(fields.cw_text, buffer(offset + data_start, #cw_text), cw_text)
-            info = cmd .. " \"" .. cw_text .. "\""
-        end
-
-    elseif cmd == "RO" then
-        -- RIT/XIT Offset
-        if #data >= 5 then
-            local sign_char = data:sub(1, 1)
-            local offset_str = data:sub(2, 5)
-            local offset_val = tonumber(offset_str)
-            if offset_val then
-                if sign_char == "-" then
-                    offset_val = -offset_val
-                end
-                msg_subtree:add(fields.rit_offset, buffer(offset + data_start - 1, #data), offset_val)
-                info = cmd .. " " .. offset_val .. " Hz"
-            end
-        end
-
-    elseif cmd == "RT" then
-        -- RIT On/Off
-        local enabled = (data == "1")
-        msg_subtree:add(fields.rit_enabled, buffer(offset + data_start - 1, #data), enabled)
-        info = cmd .. " " .. (enabled and "On" or "Off")
-
-    elseif cmd == "XT" then
-        -- XIT On/Off
-        local enabled = (data == "1")
-        msg_subtree:add(fields.xit_enabled, buffer(offset + data_start - 1, #data), enabled)
-        info = cmd .. " " .. (enabled and "On" or "Off")
-
-    elseif cmd == "FT" then
-        -- Split On/Off
-        local enabled = (data == "1")
-        msg_subtree:add(fields.split_enabled, buffer(offset + data_start - 1, #data), enabled)
-        info = cmd .. " " .. (enabled and "On" or "Off")
-
-    elseif cmd == "TX" then
-        -- Transmit
-        msg_subtree:add(fields.tx_state, buffer(offset, 2), true)
-        info = "TX (Transmit)"
-
-    elseif cmd == "RX" then
-        -- Receive
-        msg_subtree:add(fields.tx_state, buffer(offset, 2), false)
-        info = "RX (Receive)"
-
-    elseif cmd == "BN" then
-        -- Band Number
-        local band_num = tonumber(data)
-        if band_num then
-            local band_item = msg_subtree:add(fields.band_number, buffer(offset + data_start - 1, #data), band_num)
-            if band_names[band_num] then
-                band_item:append_text(" (" .. band_names[band_num] .. ")")
-                info = cmd .. " " .. band_names[band_num]
-            end
-        end
-
-    elseif cmd == "FP" then
-        -- Filter Preset
-        local preset = tonumber(data)
-        if preset then
-            msg_subtree:add(fields.filter_preset, buffer(offset + data_start - 1, #data), preset)
-            info = cmd .. " Preset " .. preset
-        end
-
-    elseif cmd == "AI" then
-        -- Auto Information Level
-        local level = tonumber(data)
-        if level then
-            msg_subtree:add(fields.ai_level, buffer(offset + data_start - 1, #data), level)
-            info = cmd .. " Level " .. level
-        end
-
-    elseif cmd == "ID" then
-        -- Radio ID
-        local radio_id = tonumber(data)
-        if radio_id then
-            local id_item = msg_subtree:add(fields.radio_id, buffer(offset + data_start - 1, #data), radio_id)
-            if radio_id == 17 then
-                id_item:append_text(" (K4)")
-                info = "ID K4"
-            end
-        end
-
-    elseif cmd == "UP" or cmd == "DN" then
-        -- VFO bump up/down
-        info = cmd .. " VFO " .. (cmd == "UP" and "Up" or "Down")
-
-    elseif cmd == "RC" then
-        -- Clear RIT/XIT
-        info = "RC (Clear RIT/XIT)"
-
-    elseif cmd == "PO" then
-        -- Power Output (in tenths of watts)
-        local power = tonumber(data)
-        if power then
-            msg_subtree:add(fields.power_output, buffer(offset + data_start - 1, #data), power)
-            info = string.format("PO %.1fW", power / 10.0)
-        end
-
-    elseif cmd == "CW" then
-        -- CW Pitch
-        local pitch = tonumber(data)
-        if pitch then
-            msg_subtree:add(fields.cw_pitch, buffer(offset + data_start - 1, #data), pitch)
-            info = cmd .. " " .. pitch .. " Hz"
-        end
-
-    elseif cmd == "AG" then
-        -- AF Gain
-        local gain = tonumber(data)
-        if gain then
-            msg_subtree:add(fields.ag_gain, buffer(offset + data_start - 1, #data), gain)
-            info = cmd .. " " .. gain
-        end
-
-    elseif cmd == "MG" then
-        -- Microphone Gain
-        local gain = tonumber(data)
-        if gain then
-            msg_subtree:add(fields.mg_gain, buffer(offset + data_start - 1, #data), gain)
-            info = cmd .. " " .. gain
-        end
-
-    elseif cmd == "RG" then
-        -- RF Gain
-        local gain = tonumber(data)
-        if gain then
-            msg_subtree:add(fields.rg_gain, buffer(offset + data_start - 1, #data), gain)
-            info = cmd .. " " .. gain
-        end
-
-    elseif cmd == "CP" then
-        -- Speech Compression
-        local level = tonumber(data)
-        if level then
-            msg_subtree:add(fields.cp_level, buffer(offset + data_start - 1, #data), level)
-            info = cmd .. " " .. level
-        end
-
-    elseif cmd == "NB" then
-        -- Noise Blanker
-        local level = tonumber(data)
-        if level then
-            msg_subtree:add(fields.nb_level, buffer(offset + data_start - 1, #data), level)
-            info = cmd .. " " .. level
-        end
-
-    elseif cmd == "SM" then
-        -- S-Meter
-        local reading = tonumber(data)
-        if reading then
-            msg_subtree:add(fields.sm_reading, buffer(offset + data_start - 1, #data), reading)
-            info = cmd .. " S" .. reading
-        end
-
-    elseif cmd == "SQ" then
-        -- Squelch
-        local level = tonumber(data)
-        if level then
-            msg_subtree:add(fields.sq_level, buffer(offset + data_start - 1, #data), level)
-            info = cmd .. " " .. level
-        end
-
-    elseif cmd == "GT" then
-        -- AGC Mode
-        local mode = tonumber(data)
-        if mode then
-            local agc_item = msg_subtree:add(fields.agc_mode, buffer(offset + data_start - 1, #data), mode)
-            if agc_names[mode] then
-                agc_item:append_text(" (" .. agc_names[mode] .. ")")
-                info = cmd .. " " .. agc_names[mode]
-            end
-        end
-
-    elseif cmd == "PA" then
-        -- Preamp
-        local preamp = tonumber(data)
-        if preamp then
-            local pa_item = msg_subtree:add(fields.preamp, buffer(offset + data_start - 1, #data), preamp)
-            if preamp_names[preamp] then
-                pa_item:append_text(" (" .. preamp_names[preamp] .. ")")
-                info = cmd .. " " .. preamp_names[preamp]
-            end
-        end
-
-    elseif cmd == "RA" then
-        -- RX Attenuator
-        local atten = tonumber(data)
-        if atten then
-            msg_subtree:add(fields.attenuator, buffer(offset + data_start - 1, #data), atten)
-            info = cmd .. " " .. atten .. "dB"
-        end
-
-    elseif cmd == "BW" then
-        -- Bandwidth
-        local bw = tonumber(data)
-        if bw then
-            msg_subtree:add(fields.bandwidth, buffer(offset + data_start - 1, #data), bw)
-            info = cmd .. " " .. bw .. " Hz"
-        end
-
-    elseif cmd == "AN" or cmd == "AR" then
-        -- Antenna (TX or RX)
-        local ant = tonumber(data)
-        if ant then
-            msg_subtree:add(fields.antenna, buffer(offset + data_start - 1, #data), ant)
-            info = cmd .. " ANT" .. ant
-        end
-
-    elseif cmd == "AT" then
-        -- ATU Status
-        local status = tonumber(data)
-        if status then
-            local atu_item = msg_subtree:add(fields.atu_status, buffer(offset + data_start - 1, #data), status)
-            if atu_names[status] then
-                atu_item:append_text(" (" .. atu_names[status] .. ")")
-                info = cmd .. " " .. atu_names[status]
-            end
-        end
-
-    elseif cmd == "LK" then
-        -- VFO Lock
-        local locked = (data == "1")
-        msg_subtree:add(fields.vfo_lock, buffer(offset + data_start - 1, #data), locked)
-        info = cmd .. " " .. (locked and "On" or "Off")
-
-    elseif cmd == "SB" then
-        -- Sub RX
-        local enabled = (data == "1")
-        msg_subtree:add(fields.subrx_enabled, buffer(offset + data_start - 1, #data), enabled)
-        info = cmd .. " " .. (enabled and "On" or "Off")
-
-    elseif cmd == "SP" then
-        -- Spot
-        local enabled = (data == "1")
-        msg_subtree:add(fields.spot_enabled, buffer(offset + data_start - 1, #data), enabled)
-        info = cmd .. " " .. (enabled and "On" or "Off")
-
-    elseif cmd == "DA" then
-        -- Digital Audio Control
-        if #data > 0 then
-            msg_subtree:add(fields.full_message, buffer(offset + data_start - 1, #data), data)
-            info = "DA " .. data
-        end
-
-    elseif cmd == "TS" then
-        -- TX Test Mode
-        local enabled = (data == "1")
-        msg_subtree:add(fields.tx_state, buffer(offset + data_start - 1, #data), enabled)
-        info = cmd .. " " .. (enabled and "On" or "Off")
-
-    elseif cmd == "SI" or cmd == "PS" or cmd == "AB" or cmd == "AF" or
-           cmd == "DR" or cmd == "DM" or cmd == "FC" then
-        -- Commands with various formats - show raw data
-        if #data > 0 then
-            msg_subtree:add(fields.full_message, buffer(offset + data_start - 1, #data), data)
-            info = cmd .. " " .. data
-        end
-
     elseif cmd == "OM" then
-        -- Option Modules - parse detailed option information
         info = parse_om_command(data, msg_subtree, buffer, offset, data_start)
-
     else
-        -- Unknown command - just show the data
-        if #data > 0 then
-            msg_subtree:add(fields.full_message, buffer(offset + data_start - 1, #data), data)
+        -- Lookup parser in registry
+        local parser = command_parsers[cmd]
+        if parser then
+            info = parser(cmd, data, msg_subtree, buffer, offset, data_start)
+        else
+            -- Unknown command - show raw data
+            if #data > 0 then
+                msg_subtree:add(fields.full_message, buffer(offset + data_start - 1, #data), data)
+            end
+            info = cmd
         end
     end
 
@@ -771,6 +648,7 @@ function k4_proto.dissector(buffer, pinfo, tree)
     -- Set protocol column
     pinfo.cols.protocol = "K4Direct"
 
+    -- Get buffer length
     local length = buffer:len()
     if length == 0 then return end
 
@@ -802,55 +680,34 @@ function k4_proto.dissector(buffer, pinfo, tree)
     end
 end
 
--- Heuristic function to detect K4 protocol
+-- Heuristic dissector to auto-detect K4 traffic on unknown ports
 local function k4_heuristic(buffer, pinfo, tree)
-    if buffer:len() < 3 then return false end
+    local length = buffer:len()
+    if length == 0 then return false end
 
     local data = buffer():string()
 
-    -- Check if it looks like K4 command format
-    -- Must contain semicolon and start with 2 letters
-    if not data:match(";") then return false end
-
     -- Check for common K4 commands
-    local common_commands = {
-        "FA", "FB", "MD", "IF", "KS", "KY", "RT", "XT", "RO",
-        "FT", "TX", "RX", "BN", "FP", "AI", "ID", "UP", "DN",
-        "RC", "OM", "DT", "DA", "PO", "CW", "AG", "MG", "RG",
-        "CP", "NB", "SM", "SQ", "GT", "PA", "RA", "BW", "AN",
-        "AR", "AT", "LK", "SB", "SP", "TS", "SI", "PS", "AB",
-        "AF", "DR", "DM", "FC"
+    local k4_patterns = {
+        "^FA", "^FB", "^MD", "^IF", "^BN", "^KS", "^RT",
+        "^XT", "^AG", "^RG", "^MG", "^OM", "^ID", "^AI",
+        "^#"  -- Panadapter commands
     }
 
-    local first_two = data:sub(1, 2)
-    for _, cmd in ipairs(common_commands) do
-        if first_two == cmd then
+    for _, pattern in ipairs(k4_patterns) do
+        if data:match(pattern) then
+            -- Looks like K4 protocol, dissect it
             k4_proto.dissector(buffer, pinfo, tree)
             return true
-        end
-    end
-
-    -- Check if it has VFO B marker
-    if buffer:len() >= 3 and data:sub(3, 3) == "$" then
-        local cmd = data:sub(1, 2)
-        for _, common_cmd in ipairs(common_commands) do
-            if cmd == common_cmd then
-                k4_proto.dissector(buffer, pinfo, tree)
-                return true
-            end
         end
     end
 
     return false
 end
 
--- Register the protocol on TCP port
--- K4 control port is 9200
+-- Register the protocol
 local tcp_port = DissectorTable.get("tcp.port")
 tcp_port:add(9200, k4_proto)
 
--- Also register heuristic dissector for unknown ports
+-- Register heuristic dissector
 k4_proto:register_heuristic("tcp", k4_heuristic)
-
--- Optionally register on additional ports if needed
--- tcp_port:add(50001, k4_proto)  -- Example: add another port
