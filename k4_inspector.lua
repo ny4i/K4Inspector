@@ -101,6 +101,25 @@ fields.vox_gain_mode = ProtoField.string("k4direct.vox_gain_mode", "VOX Gain Mod
 fields.apf_mode = ProtoField.uint8("k4direct.apf_mode", "APF Mode", base.DEC)
 fields.apf_bandwidth = ProtoField.uint8("k4direct.apf_bandwidth", "APF Bandwidth", base.DEC)
 
+-- Batch 3: Complex structured commands
+fields.qsk_full = ProtoField.bool("k4direct.qsk_full", "Full CW QSK")
+fields.vox_delay_mode = ProtoField.string("k4direct.vox_delay_mode", "VOX Delay Mode")
+fields.vox_delay = ProtoField.uint16("k4direct.vox_delay", "VOX/QSK Delay (10ms)", base.DEC)
+fields.front_mic_preamp = ProtoField.uint8("k4direct.front_mic_preamp", "Front Mic Preamp (dB)", base.DEC)
+fields.front_mic_bias = ProtoField.bool("k4direct.front_mic_bias", "Front Mic Bias")
+fields.front_mic_controls = ProtoField.bool("k4direct.front_mic_controls", "Front Mic Controls")
+fields.rear_mic_preamp = ProtoField.uint8("k4direct.rear_mic_preamp", "Rear Mic Preamp (dB)", base.DEC)
+fields.rear_mic_bias = ProtoField.bool("k4direct.rear_mic_bias", "Rear Mic Bias")
+fields.keyer_iambic_mode = ProtoField.string("k4direct.keyer_iambic_mode", "Keyer Iambic Mode")
+fields.paddle_orientation = ProtoField.string("k4direct.paddle_orientation", "Paddle Orientation")
+fields.keyer_weight = ProtoField.uint16("k4direct.keyer_weight", "Keyer Weight", base.DEC)
+fields.line_out_left = ProtoField.uint8("k4direct.line_out_left", "Line Out Left Level", base.DEC)
+fields.line_out_right = ProtoField.uint8("k4direct.line_out_right", "Line Out Right Level", base.DEC)
+fields.line_out_mode = ProtoField.uint8("k4direct.line_out_mode", "Line Out Mode", base.DEC)
+fields.line_in_usb = ProtoField.uint16("k4direct.line_in_usb", "Line In USB-B Level", base.DEC)
+fields.line_in_line = ProtoField.uint16("k4direct.line_in_line", "Line In Jack Level", base.DEC)
+fields.line_in_source = ProtoField.uint8("k4direct.line_in_source", "Line In Source", base.DEC)
+
 -- Mode value strings
 local mode_names = {
     [0] = "None",
@@ -217,6 +236,37 @@ local apf_bandwidth_names = {
 local vox_gain_mode_names = {
     V = "Voice",
     D = "AF Data"
+}
+
+-- Batch 3: Complex structured command lookup tables
+
+-- VOX/QSK Delay mode names (SD command)
+local vox_delay_mode_names = {
+    C = "CW/Direct Data",
+    V = "Voice",
+    D = "AF Data"
+}
+
+-- Mic preamp dB values (MS command)
+local front_mic_preamp_db = {[0] = 0, [1] = 10, [2] = 20}
+local rear_mic_preamp_db = {[0] = 0, [1] = 14}
+
+-- Keyer iambic mode (KP command)
+local keyer_iambic_names = {A = "Iambic A", B = "Iambic B"}
+
+-- Paddle orientation (KP command)
+local paddle_orientation_names = {N = "Normal", R = "Reversed"}
+
+-- Line out mode (LO command)
+local line_out_mode_names = {
+    [0] = "Independent",
+    [1] = "Right uses Left"
+}
+
+-- Line in source (LI command)
+local line_in_source_names = {
+    [0] = "USB-B (Sound Card)",
+    [1] = "LINE IN Jack"
 }
 
 -- Menu parameter names (ME command)
@@ -1055,6 +1105,121 @@ local function parse_power_control(cmd, data, msg_subtree, buffer, offset, data_
 end
 
 -- =============================================================================
+-- BATCH 3: COMPLEX STRUCTURED COMMANDS
+-- =============================================================================
+
+-- Parse SD command (VOX or QSK Delay)
+-- Format: SDxyzzz; where x=QSK (0/1), y=mode (C/V/D), zzz=delay in 10ms
+local function parse_vox_delay(cmd, data, msg_subtree, buffer, offset, data_start)
+    if #data >= 5 then
+        local qsk = tonumber(data:sub(1, 1))
+        local mode_char = data:sub(2, 2)
+        local delay = tonumber(data:sub(3, 5))
+
+        if qsk and delay and vox_delay_mode_names[mode_char] then
+            msg_subtree:add(fields.qsk_full, buffer(offset + data_start - 1, 1), qsk == 1)
+            msg_subtree:add(fields.vox_delay_mode, buffer(offset + data_start, 1), mode_char)
+            msg_subtree:add(fields.vox_delay, buffer(offset + data_start + 1, 3), delay)
+
+            local qsk_str = (qsk == 1) and "Full QSK" or vox_delay_mode_names[mode_char]
+            local delay_str = string.format("%d ms", delay * 10)
+            return string.format("SD %s %s", qsk_str, delay_str)
+        end
+    end
+    return cmd
+end
+
+-- Parse MS command (Mic Setup)
+-- Format: MSabcde; where a=front preamp (0-2), b=front bias (0-1), c=front controls (0-1),
+--                        d=rear preamp (0-1), e=rear bias (0-1)
+local function parse_mic_setup(cmd, data, msg_subtree, buffer, offset, data_start)
+    if #data >= 5 then
+        local a = tonumber(data:sub(1, 1))
+        local b = tonumber(data:sub(2, 2))
+        local c = tonumber(data:sub(3, 3))
+        local d = tonumber(data:sub(4, 4))
+        local e = tonumber(data:sub(5, 5))
+
+        if a and b and c and d and e then
+            local front_db = front_mic_preamp_db[a] or 0
+            local rear_db = rear_mic_preamp_db[d] or 0
+
+            msg_subtree:add(fields.front_mic_preamp, buffer(offset + data_start - 1, 1), front_db)
+            msg_subtree:add(fields.front_mic_bias, buffer(offset + data_start, 1), b == 1)
+            msg_subtree:add(fields.front_mic_controls, buffer(offset + data_start + 1, 1), c == 1)
+            msg_subtree:add(fields.rear_mic_preamp, buffer(offset + data_start + 2, 1), rear_db)
+            msg_subtree:add(fields.rear_mic_bias, buffer(offset + data_start + 3, 1), e == 1)
+
+            return string.format("MS Front:%ddB/%s/%s Rear:%ddB/%s",
+                front_db, b == 1 and "Bias" or "NoBias", c == 1 and "Ctrl" or "NoCtrl",
+                rear_db, e == 1 and "Bias" or "NoBias")
+        end
+    end
+    return cmd
+end
+
+-- Parse KP command (Keyer Paddle and Weight Setup)
+-- Format: KPionnn; where i=iambic (A/B), o=orientation (N/R), nnn=weight (090-125)
+local function parse_keyer_paddle(cmd, data, msg_subtree, buffer, offset, data_start)
+    if #data >= 5 then
+        local iambic = data:sub(1, 1)
+        local orient = data:sub(2, 2)
+        local weight = tonumber(data:sub(3, 5))
+
+        if weight and keyer_iambic_names[iambic] and paddle_orientation_names[orient] then
+            msg_subtree:add(fields.keyer_iambic_mode, buffer(offset + data_start - 1, 1), iambic)
+            msg_subtree:add(fields.paddle_orientation, buffer(offset + data_start, 1), orient)
+            msg_subtree:add(fields.keyer_weight, buffer(offset + data_start + 1, 3), weight)
+
+            local weight_ratio = string.format("%.2f", weight / 100.0)
+            return string.format("KP %s %s Weight:%s",
+                keyer_iambic_names[iambic], paddle_orientation_names[orient], weight_ratio)
+        end
+    end
+    return cmd
+end
+
+-- Parse LO command (Line Out)
+-- Format: LOlllrrrm; where lll=left level (0-040), rrr=right level, m=mode (0/1)
+local function parse_line_out(cmd, data, msg_subtree, buffer, offset, data_start)
+    if #data >= 7 then
+        local left = tonumber(data:sub(1, 3))
+        local right = tonumber(data:sub(4, 6))
+        local mode = tonumber(data:sub(7, 7))
+
+        if left and right and mode then
+            msg_subtree:add(fields.line_out_left, buffer(offset + data_start - 1, 3), left)
+            msg_subtree:add(fields.line_out_right, buffer(offset + data_start + 2, 3), right)
+            msg_subtree:add(fields.line_out_mode, buffer(offset + data_start + 5, 1), mode)
+
+            local mode_str = line_out_mode_names[mode] or "Unknown"
+            return string.format("LO L:%d R:%d %s", left, right, mode_str)
+        end
+    end
+    return cmd
+end
+
+-- Parse LI command (Line Input)
+-- Format: LIuuullls; where uuu=USB-B level, lll=LINE IN level, s=source (0/1)
+local function parse_line_in(cmd, data, msg_subtree, buffer, offset, data_start)
+    if #data >= 7 then
+        local usb = tonumber(data:sub(1, 3))
+        local line = tonumber(data:sub(4, 6))
+        local source = tonumber(data:sub(7, 7))
+
+        if usb and line and source then
+            msg_subtree:add(fields.line_in_usb, buffer(offset + data_start - 1, 3), usb)
+            msg_subtree:add(fields.line_in_line, buffer(offset + data_start + 2, 3), line)
+            msg_subtree:add(fields.line_in_source, buffer(offset + data_start + 5, 1), source)
+
+            local source_str = line_in_source_names[source] or "Unknown"
+            return string.format("LI USB:%d LINE:%d Source:%s", usb, line, source_str)
+        end
+    end
+    return cmd
+end
+
+-- =============================================================================
 -- COMMAND REGISTRY - Maps command codes to parser functions
 -- =============================================================================
 
@@ -1157,19 +1322,21 @@ local command_parsers = {
     VG = parse_vox_gain,
     AP = parse_apf,
 
+    -- Batch 3: Complex structured commands
+    SD = parse_vox_delay,
+    MS = parse_mic_setup,
+    KP = parse_keyer_paddle,
+    LO = parse_line_out,
+    LI = parse_line_in,
+
     -- Complex commands (to be implemented)
     NR = parse_raw, -- Noise Reduction
     NM = parse_raw, -- Notch Mode
     MA = parse_raw, -- Manual Notch
     TE = parse_eq,
     TA = parse_raw, -- TX Antenna
-    SD = parse_raw, -- CW Sidetone
     RE = parse_eq,
     PC = parse_power_control,
-    MS = parse_raw, -- Monitor/Sidetone
-    LO = parse_raw, -- Lock
-    LI = parse_raw, -- Line Input
-    KP = parse_raw, -- Keyer Paddle
     VX = parse_vox,
     PL = parse_raw, -- PL Tone
 }
