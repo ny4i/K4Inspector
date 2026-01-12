@@ -80,6 +80,8 @@ fields.eq_band_1200 = ProtoField.int8("k4direct.eq_1200", "1200 Hz", base.DEC)
 fields.eq_band_1600 = ProtoField.int8("k4direct.eq_1600", "1600 Hz", base.DEC)
 fields.eq_band_2400 = ProtoField.int8("k4direct.eq_2400", "2400 Hz", base.DEC)
 fields.eq_band_3200 = ProtoField.int8("k4direct.eq_3200", "3200 Hz", base.DEC)
+fields.vox_mode = ProtoField.string("k4direct.vox_mode", "VOX Mode")
+fields.vox_state = ProtoField.bool("k4direct.vox_state", "VOX State")
 
 -- Mode value strings
 local mode_names = {
@@ -764,6 +766,34 @@ local function parse_menu(cmd, data, msg_subtree, buffer, offset, data_start)
     return cmd
 end
 
+-- Parse VX command (VOX On/Off)
+-- Format: VXmn; where m=mode (C/V/D), n=state (0/1)
+local function parse_vox(cmd, data, msg_subtree, buffer, offset, data_start)
+    if #data >= 2 then
+        local mode_char = data:sub(1, 1)
+        local state_char = data:sub(2, 2)
+
+        local mode_names = {
+            C = "CW/Direct Data",
+            V = "Voice",
+            D = "AF Data"
+        }
+
+        local mode_name = mode_names[mode_char] or "Unknown"
+        local state_val = (state_char == "1") and 1 or 0
+
+        -- Add mode field
+        msg_subtree:add(fields.vox_mode, buffer(offset + data_start - 1, 1), mode_char):append_text(" (" .. mode_name .. ")")
+
+        -- Add state field
+        msg_subtree:add(fields.vox_state, buffer(offset + data_start, 1), state_val)
+
+        local state_str = (state_val == 1) and "ON" or "OFF"
+        return "VOX " .. mode_name .. " " .. state_str
+    end
+    return cmd
+end
+
 -- Parse EQ command (TE - TX EQ, RE - RX EQ)
 -- Format: CMDabcdefgh; where a-h are 3-char signed values (-16 to +16 dB)
 -- Bands: a=100Hz, b=200Hz, c=400Hz, d=800Hz, e=1200Hz, f=1600Hz, g=2400Hz, h=3200Hz
@@ -962,7 +992,7 @@ local command_parsers = {
     DV = parse_raw, -- Diversity
     DO = parse_raw, -- Data Output
     BI = parse_raw, -- Band Info
-    VX = parse_raw, -- VOX
+    VX = parse_vox,
     PL = parse_raw, -- PL Tone
     FI = parse_raw, -- Filter
 }
