@@ -92,6 +92,14 @@ fields.tx_gain = ProtoField.uint16("k4direct.tx_gain", "TX Gain", base.DEC)
 fields.voice_input = ProtoField.uint8("k4direct.voice_input", "Voice Input Level", base.DEC)
 fields.mic_input = ProtoField.uint8("k4direct.mic_input", "Mic Input", base.DEC)
 fields.vfo_operation = ProtoField.uint8("k4direct.vfo_operation", "VFO Operation", base.DEC)
+fields.if_center_freq = ProtoField.uint32("k4direct.if_center_freq", "IF Center Frequency (Hz)", base.DEC)
+fields.if_shift = ProtoField.uint16("k4direct.if_shift", "IF Shift (x10 Hz)", base.DEC)
+fields.essb_mode = ProtoField.uint8("k4direct.essb_mode", "ESSB Mode", base.DEC)
+fields.essb_bandwidth = ProtoField.uint16("k4direct.essb_bandwidth", "ESSB Bandwidth (Hz)", base.DEC)
+fields.vox_gain = ProtoField.uint8("k4direct.vox_gain", "VOX Gain", base.DEC)
+fields.vox_gain_mode = ProtoField.string("k4direct.vox_gain_mode", "VOX Gain Mode")
+fields.apf_mode = ProtoField.uint8("k4direct.apf_mode", "APF Mode", base.DEC)
+fields.apf_bandwidth = ProtoField.uint8("k4direct.apf_bandwidth", "APF Bandwidth", base.DEC)
 
 -- Mode value strings
 local mode_names = {
@@ -184,6 +192,31 @@ local vfo_operation_names = {
     [3] = "All A>B",
     [4] = "All B>A",
     [5] = "All A/B Swap"
+}
+
+-- ESSB mode names
+local essb_mode_names = {
+    [0] = "SSB",
+    [1] = "ESSB"
+}
+
+-- APF mode names
+local apf_mode_names = {
+    [0] = "Off",
+    [1] = "On"
+}
+
+-- APF bandwidth names
+local apf_bandwidth_names = {
+    [0] = "Narrow (30 Hz)",
+    [1] = "Wide (50 Hz)",
+    [2] = "Wide (150 Hz)"
+}
+
+-- VOX Gain mode names
+local vox_gain_mode_names = {
+    V = "Voice",
+    D = "AF Data"
 }
 
 -- Menu parameter names (ME command)
@@ -802,6 +835,110 @@ local function parse_menu(cmd, data, msg_subtree, buffer, offset, data_start)
     return cmd
 end
 
+-- Parse FI command (IF Center Frequency)
+-- Format: FInnnnnnnnnnn; (11-digit Hz, same as FA/FB)
+local function parse_if_center(cmd, data, msg_subtree, buffer, offset, data_start)
+    if #data == 11 then
+        local freq = tonumber(data)
+        if freq then
+            local freq_item = msg_subtree:add(fields.if_center_freq, buffer(offset + data_start - 1, 11), freq)
+            freq_item:append_text(" (" .. format_frequency(freq) .. ")")
+
+            -- Validate frequency range
+            local warning = validate_frequency(freq)
+            if warning then
+                freq_item:append_text(" " .. warning)
+            end
+
+            return cmd .. " " .. format_frequency(freq)
+        end
+    end
+    return cmd
+end
+
+-- Parse IS command (IF Shift / Center Pitch)
+-- Format: IS nnnn; where nnnn = pitch (x10 Hz)
+-- NOTE: Has SPACE before value!
+local function parse_if_shift(cmd, data, msg_subtree, buffer, offset, data_start)
+    -- Strip leading space if present
+    local trimmed_data = data:match("^%s*(.*)$")
+    local shift_val = tonumber(trimmed_data)
+
+    if shift_val then
+        msg_subtree:add(fields.if_shift, buffer(offset + data_start - 1, #data), shift_val)
+        return string.format("IS %d Hz", shift_val * 10)
+    end
+    return cmd
+end
+
+-- Parse ES command (TX SSB/ESSB Mode and Bandwidth)
+-- Format: ESnbb; where n=mode (0/1), bb=bandwidth in 100 Hz units (30-45)
+local function parse_essb(cmd, data, msg_subtree, buffer, offset, data_start)
+    if #data >= 3 then
+        local mode_val = tonumber(data:sub(1, 1))
+        local bw_val = tonumber(data:sub(2, 3))
+
+        if mode_val and bw_val then
+            local mode_item = msg_subtree:add(fields.essb_mode, buffer(offset + data_start - 1, 1), mode_val)
+            if essb_mode_names[mode_val] then
+                mode_item:append_text(" (" .. essb_mode_names[mode_val] .. ")")
+            end
+
+            local bw_hz = bw_val * 100
+            msg_subtree:add(fields.essb_bandwidth, buffer(offset + data_start, 2), bw_hz)
+
+            local mode_str = essb_mode_names[mode_val] or "Unknown"
+            return string.format("ES %s %.1f kHz", mode_str, bw_hz / 1000.0)
+        end
+    end
+    return cmd
+end
+
+-- Parse VG command (VOX Gain)
+-- Format: VGmnnn; where m=mode (V/D), nnn=gain (000-060)
+local function parse_vox_gain(cmd, data, msg_subtree, buffer, offset, data_start)
+    if #data >= 4 then
+        local mode_char = data:sub(1, 1)
+        local gain_val = tonumber(data:sub(2, 4))
+
+        if gain_val then
+            local mode_name = vox_gain_mode_names[mode_char] or "Unknown"
+
+            msg_subtree:add(fields.vox_gain_mode, buffer(offset + data_start - 1, 1), mode_char):append_text(" (" .. mode_name .. ")")
+            msg_subtree:add(fields.vox_gain, buffer(offset + data_start, 3), gain_val)
+
+            return string.format("VOX Gain %s %d", mode_name, gain_val)
+        end
+    end
+    return cmd
+end
+
+-- Parse AP command (APF - Audio Peak Filter)
+-- Format: APmb; where m=mode (0/1), b=bandwidth (0/1/2)
+local function parse_apf(cmd, data, msg_subtree, buffer, offset, data_start)
+    if #data >= 2 then
+        local mode_val = tonumber(data:sub(1, 1))
+        local bw_val = tonumber(data:sub(2, 2))
+
+        if mode_val and bw_val then
+            local mode_item = msg_subtree:add(fields.apf_mode, buffer(offset + data_start - 1, 1), mode_val)
+            if apf_mode_names[mode_val] then
+                mode_item:append_text(" (" .. apf_mode_names[mode_val] .. ")")
+            end
+
+            local bw_item = msg_subtree:add(fields.apf_bandwidth, buffer(offset + data_start, 1), bw_val)
+            if apf_bandwidth_names[bw_val] then
+                bw_item:append_text(" (" .. apf_bandwidth_names[bw_val] .. ")")
+            end
+
+            local mode_str = apf_mode_names[mode_val] or "Unknown"
+            local bw_str = apf_bandwidth_names[bw_val] or string.format("BW%d", bw_val)
+            return string.format("APF %s %s", mode_str, bw_str)
+        end
+    end
+    return cmd
+end
+
 -- Parse VX command (VOX On/Off)
 -- Format: VXmn; where m=mode (C/V/D), n=state (0/1)
 local function parse_vox(cmd, data, msg_subtree, buffer, offset, data_start)
@@ -1013,13 +1150,17 @@ local command_parsers = {
     VI = parse_numeric("VI", nil, fields.voice_input),
     MI = parse_named_value("MI", nil, fields.mic_input, mic_input_names),
 
+    -- Batch 2: Special format commands
+    FI = parse_if_center,
+    IS = parse_if_shift,
+    ES = parse_essb,
+    VG = parse_vox_gain,
+    AP = parse_apf,
+
     -- Complex commands (to be implemented)
-    AP = parse_raw, -- Auto Peak
     NR = parse_raw, -- Noise Reduction
     NM = parse_raw, -- Notch Mode
     MA = parse_raw, -- Manual Notch
-    IS = parse_raw, -- IF Shift
-    VG = parse_raw, -- VOX Gain
     TE = parse_eq,
     TA = parse_raw, -- TX Antenna
     SD = parse_raw, -- CW Sidetone
@@ -1029,10 +1170,8 @@ local command_parsers = {
     LO = parse_raw, -- Lock
     LI = parse_raw, -- Line Input
     KP = parse_raw, -- Keyer Paddle
-    ES = parse_raw, -- Error Status
     VX = parse_vox,
     PL = parse_raw, -- PL Tone
-    FI = parse_raw, -- Filter
 }
 
 -- Parse individual K4 command using table-driven dispatch
