@@ -958,6 +958,16 @@ local function parse_k4_command(msg, msg_subtree, buffer, offset)
     msg_subtree:add(fields.command, buffer(offset, 2), cmd)
     msg_subtree:add(fields.vfo, buffer(offset, data_start - 1), vfo)
 
+    -- Check for query format (command followed by ?)
+    if data == "?" then
+        msg_subtree:add(fields.full_message, buffer(offset + data_start - 1, 1), "?")
+        local info = cmd .. " Query"
+        if vfo == "VFO B" then
+            info = info .. " (VFO B)"
+        end
+        return info
+    end
+
     -- Special cases that need different call signatures
     local info
     if cmd == "IF" then
