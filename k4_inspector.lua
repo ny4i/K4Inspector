@@ -67,6 +67,7 @@ fields.atu_status = ProtoField.uint8("k4direct.atu_status", "ATU Status", base.D
 fields.vfo_lock = ProtoField.bool("k4direct.vfo_lock", "VFO Lock")
 fields.subrx_enabled = ProtoField.bool("k4direct.subrx_enabled", "Sub RX Enabled")
 fields.spot_enabled = ProtoField.bool("k4direct.spot_enabled", "Spot Enabled")
+fields.data_baud_rate = ProtoField.uint8("k4direct.data_baud_rate", "Data Baud Rate", base.DEC)
 
 -- Mode value strings
 local mode_names = {
@@ -125,6 +126,14 @@ local band_names = {
     [8] = "12m",
     [9] = "10m",
     [10] = "6m"
+}
+
+-- Data baud rate names
+local baud_rate_names = {
+    [0] = "45 baud (FSK)",
+    [1] = "75 baud (FSK)",
+    [2] = "31 baud (PSK)",
+    [3] = "63 baud (PSK)"
 }
 
 -- Format frequency for display
@@ -685,13 +694,15 @@ local command_parsers = {
     AI = parse_numeric("AI", nil, fields.ai_level),
     ID = parse_id,
 
+    -- Data mode
+    DR = parse_named_value("DR", nil, fields.data_baud_rate, baud_rate_names),
+
     -- Raw data commands
     DA = parse_raw,
     SI = parse_raw,
     PS = parse_raw,
     AB = parse_raw,
     AF = parse_raw,
-    DR = parse_raw,
     DM = parse_raw,
     FC = parse_raw,
 
