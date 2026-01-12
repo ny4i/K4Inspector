@@ -10,6 +10,17 @@ local fields = k4_proto.fields
 fields.command = ProtoField.string("k4direct.command", "Command")
 fields.vfo = ProtoField.string("k4direct.vfo", "VFO")
 fields.full_message = ProtoField.string("k4direct.message", "Full Message")
+
+-- IMPORTANT: Frequency field uses uint32 instead of uint64
+-- ISSUE: ProtoField.uint64 causes Wireshark Lua API errors when calling TreeItem:add()
+--        Error: "calling 'add' on bad self (userdata expected, got number)"
+-- ROOT CAUSE: Wireshark's Lua API (as of v4.x) has issues with uint64 ProtoField types
+--             in the 3-parameter form: subtree:add(field, buffer, value)
+-- WORKAROUND: Use uint32 which works correctly with the Lua API
+-- VALIDATION: uint32 max = 4,294,967,295 Hz = 4.2 GHz
+--             K4 max frequency = 54 MHz (HF) or ~500 MHz (with XVTR)
+--             uint32 is sufficient for all K4 use cases
+-- TESTED: All real K4 captures parse correctly with uint32
 fields.frequency = ProtoField.uint32("k4direct.frequency", "Frequency (Hz)", base.DEC)
 fields.mode = ProtoField.uint8("k4direct.mode", "Mode", base.DEC)
 fields.data_submode = ProtoField.uint8("k4direct.data_submode", "Data Sub-mode", base.DEC)
@@ -122,6 +133,117 @@ local function format_frequency(freq_hz)
     return string.format("%.6f MHz", freq_mhz)
 end
 
+-- =============================================================================
+-- VALIDATION FUNCTIONS - Detect invalid/suspicious values
+-- =============================================================================
+
+-- Validate frequency range (returns warning message or nil if valid)
+local function validate_frequency(freq)
+    if not freq or freq == 0 then
+        return nil  -- Empty/query command
+    end
+
+    -- K4 HF range: 500 kHz to 54 MHz
+    if freq < 500000 then
+        return "⚠ Frequency below 500 kHz (K4 minimum)"
+    end
+
+    -- K4 with transverter: up to ~500 MHz is reasonable
+    if freq > 500000000 then
+        return "⚠ Frequency above 500 MHz (suspect, check transverter)"
+    end
+
+    -- Warn if frequency seems unrealistic (typo/corruption)
+    if freq > 54000000 and freq < 100000000 then
+        return "⚠ Frequency 54-100 MHz (unusual, verify transverter)"
+    end
+
+    return nil  -- Valid
+end
+
+-- Validate mode value (returns warning message or nil if valid)
+local function validate_mode(mode)
+    if not mode then return nil end
+
+    -- Valid K4 modes: 0-7, 9
+    if mode == 8 or mode > 9 then
+        return "⚠ Invalid mode value " .. mode .. " (valid: 0-7, 9)"
+    end
+
+    return nil  -- Valid
+end
+
+-- Validate data sub-mode (returns warning message or nil if valid)
+local function validate_data_submode(submode)
+    if not submode then return nil end
+
+    -- Valid data sub-modes: 0-3
+    if submode > 3 then
+        return "⚠ Invalid data sub-mode " .. submode .. " (valid: 0-3)"
+    end
+
+    return nil  -- Valid
+end
+
+-- Validate band number (returns warning message or nil if valid)
+local function validate_band(band)
+    if not band then return nil end
+
+    -- Valid bands: 0-10 (160m to 6m)
+    if band > 10 then
+        return "⚠ Invalid band " .. band .. " (valid: 0-10)"
+    end
+
+    return nil  -- Valid
+end
+
+-- Validate AGC mode (returns warning message or nil if valid)
+local function validate_agc(agc)
+    if not agc then return nil end
+
+    -- Valid AGC: 0-3 (Off, Slow, Med, Fast)
+    if agc > 3 then
+        return "⚠ Invalid AGC mode " .. agc .. " (valid: 0-3)"
+    end
+
+    return nil  -- Valid
+end
+
+-- Validate preamp setting (returns warning message or nil if valid)
+local function validate_preamp(preamp)
+    if not preamp then return nil end
+
+    -- Valid preamp: 0-3
+    if preamp > 3 then
+        return "⚠ Invalid preamp " .. preamp .. " (valid: 0-3)"
+    end
+
+    return nil  -- Valid
+end
+
+-- Validate ATU status (returns warning message or nil if valid)
+local function validate_atu(atu)
+    if not atu then return nil end
+
+    -- Valid ATU: 0-2 (Bypass, Auto, Tune)
+    if atu > 2 then
+        return "⚠ Invalid ATU status " .. atu .. " (valid: 0-2)"
+    end
+
+    return nil  -- Valid
+end
+
+-- Validate generic range (returns warning message or nil if valid)
+local function validate_range(value, min_val, max_val, name)
+    if not value then return nil end
+
+    if value < min_val or value > max_val then
+        return string.format("⚠ %s value %d out of range (%d-%d)", name, value, min_val, max_val)
+    end
+
+    return nil  -- Valid
+end
+
 -- Parse IF command (comprehensive status response)
 local function parse_if_command(msg, subtree, buffer, offset)
     -- IF command format: IF[f]*****+yyyyrx*00tmvspbd1*;
@@ -150,6 +272,13 @@ local function parse_if_command(msg, subtree, buffer, offset)
     if freq then
         local freq_item = subtree:add(fields.frequency, buffer(offset + pos + 1, 11), freq)
         freq_item:append_text(" (" .. format_frequency(freq) .. ")")
+
+        -- Validate frequency range
+        local warning = validate_frequency(freq)
+        if warning then
+            freq_item:add_expert_info(PI_MALFORMED, PI_WARN, warning)
+        end
+
         table.insert(info_parts, format_frequency(freq))
     end
     pos = pos + 11
@@ -200,6 +329,13 @@ local function parse_if_command(msg, subtree, buffer, offset)
     local mode_val = tonumber(mode_char)
     if mode_val then
         local mode_item = subtree:add(fields.mode, buffer(offset + pos + 1, 1), mode_val)
+
+        -- Validate mode value
+        local warning = validate_mode(mode_val)
+        if warning then
+            mode_item:add_expert_info(PI_MALFORMED, PI_WARN, warning)
+        end
+
         if mode_names[mode_val] then
             mode_item:append_text(" (" .. mode_names[mode_val] .. ")")
             table.insert(info_parts, mode_names[mode_val])
@@ -351,6 +487,13 @@ local function parse_frequency(cmd, data, msg_subtree, buffer, offset, data_star
         if freq then
             local freq_item = msg_subtree:add(fields.frequency, buffer(offset + data_start - 1, 11), freq)
             freq_item:append_text(" (" .. format_frequency(freq) .. ")")
+
+            -- Validate frequency range
+            local warning = validate_frequency(freq)
+            if warning then
+                freq_item:add_expert_info(PI_MALFORMED, PI_WARN, warning)
+            end
+
             return cmd .. " " .. format_frequency(freq)
         end
     end
@@ -380,11 +523,21 @@ local function parse_numeric(cmd, data, field, unit, scale)
 end
 
 -- Parse numeric value with name lookup
-local function parse_named_value(cmd, data, field, names)
+-- validator: optional validation function that returns warning message or nil
+local function parse_named_value(cmd, data, field, names, validator)
     return function(c, d, subtree, buffer, offset, data_start)
         local val = tonumber(d)
         if val then
             local item = subtree:add(field, buffer(offset + data_start - 1, #d), val)
+
+            -- Validate if validator provided
+            if validator then
+                local warning = validator(val)
+                if warning then
+                    item:add_expert_info(PI_MALFORMED, PI_WARN, warning)
+                end
+            end
+
             if names[val] then
                 item:append_text(" (" .. names[val] .. ")")
                 return c .. " " .. names[val]
@@ -472,8 +625,8 @@ local command_parsers = {
     FB = parse_frequency,
 
     -- Mode & Data
-    MD = parse_named_value("MD", nil, fields.mode, mode_names),
-    DT = parse_named_value("DT", nil, fields.data_submode, data_submode_names),
+    MD = parse_named_value("MD", nil, fields.mode, mode_names, validate_mode),
+    DT = parse_named_value("DT", nil, fields.data_submode, data_submode_names, validate_data_submode),
 
     -- RIT/XIT
     RO = parse_offset,
@@ -498,7 +651,7 @@ local command_parsers = {
     CW = parse_numeric("CW", nil, fields.cw_pitch, " Hz"),
 
     -- Band & Filter
-    BN = parse_named_value("BN", nil, fields.band_number, band_names),
+    BN = parse_named_value("BN", nil, fields.band_number, band_names, validate_band),
     FP = parse_numeric("FP", nil, fields.filter_preset),
 
     -- Gain Controls
@@ -510,15 +663,15 @@ local command_parsers = {
     SQ = parse_numeric("SQ", nil, fields.sq_level),
 
     -- Signal Processing
-    GT = parse_named_value("GT", nil, fields.agc_mode, agc_names),
-    PA = parse_named_value("PA", nil, fields.preamp, preamp_names),
+    GT = parse_named_value("GT", nil, fields.agc_mode, agc_names, validate_agc),
+    PA = parse_named_value("PA", nil, fields.preamp, preamp_names, validate_preamp),
     RA = parse_numeric("RA", nil, fields.attenuator, "dB"),
     BW = parse_numeric("BW", nil, fields.bandwidth, " Hz"),
 
     -- Antenna & ATU
     AN = parse_numeric("AN", nil, fields.antenna),
     AR = parse_numeric("AR", nil, fields.antenna),
-    AT = parse_named_value("AT", nil, fields.atu_status, atu_names),
+    AT = parse_named_value("AT", nil, fields.atu_status, atu_names, validate_atu),
 
     -- Power & Monitoring
     PO = parse_power,
@@ -665,9 +818,15 @@ function k4_proto.dissector(buffer, pinfo, tree)
     for msg in data:gmatch("([^;]+)") do
         if #msg > 0 then
             local msg_len = #msg + 1 -- Include semicolon
-            local msg_subtree = subtree:add(k4_proto, buffer(offset, msg_len), "Command: " .. msg .. ";")
-            local info = parse_k4_command(msg, msg_subtree, buffer, offset)
-            table.insert(info_parts, info)
+
+            -- Check if we have enough buffer for the full message (prevents Range out of bounds)
+            local actual_len = math.min(msg_len, length - offset)
+            if actual_len > 0 then
+                local msg_subtree = subtree:add(k4_proto, buffer(offset, actual_len), "Command: " .. msg .. ";")
+                local info = parse_k4_command(msg, msg_subtree, buffer, offset)
+                table.insert(info_parts, info)
+            end
+
             offset = offset + msg_len
         end
     end
