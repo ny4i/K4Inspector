@@ -391,6 +391,80 @@ def generate_om_hardware():
                                seq_server, seq_client, psh_ack_flags, k4_data)
         write_packet(f, timestamp, pkt)
 
+def generate_invalid_data():
+    """Generate invalid_data.pcap - Invalid values to test validation."""
+    print("Generating invalid_data.pcap...")
+
+    with open('samples/invalid_data.pcap', 'wb') as f:
+        f.write(PCAP_GLOBAL_HEADER)
+
+        timestamp = time.time()
+        seq_client = 1000
+        seq_server = 2000
+        psh_ack_flags = 0x18
+
+        # Invalid frequency - way too high
+        k4_data = "FA99999999999;"
+        pkt = create_k4_packet('192.168.1.52', '192.168.73.108', 54000, 9200,
+                               seq_client, seq_server, psh_ack_flags, k4_data)
+        write_packet(f, timestamp, pkt)
+        seq_client += len(k4_data)
+        timestamp += 0.01
+
+        # Invalid frequency - too low
+        k4_data = "FA00000100000;"
+        pkt = create_k4_packet('192.168.1.52', '192.168.73.108', 54000, 9200,
+                               seq_client, seq_server, psh_ack_flags, k4_data)
+        write_packet(f, timestamp, pkt)
+        seq_client += len(k4_data)
+        timestamp += 0.01
+
+        # Invalid mode - 8 (gap in valid modes)
+        k4_data = "MD8;"
+        pkt = create_k4_packet('192.168.1.52', '192.168.73.108', 54000, 9200,
+                               seq_client, seq_server, psh_ack_flags, k4_data)
+        write_packet(f, timestamp, pkt)
+        seq_client += len(k4_data)
+        timestamp += 0.01
+
+        # Invalid mode - 99
+        k4_data = "MD99;"
+        pkt = create_k4_packet('192.168.1.52', '192.168.73.108', 54000, 9200,
+                               seq_client, seq_server, psh_ack_flags, k4_data)
+        write_packet(f, timestamp, pkt)
+        seq_client += len(k4_data)
+        timestamp += 0.01
+
+        # Invalid band - 99
+        k4_data = "BN99;"
+        pkt = create_k4_packet('192.168.1.52', '192.168.73.108', 54000, 9200,
+                               seq_client, seq_server, psh_ack_flags, k4_data)
+        write_packet(f, timestamp, pkt)
+        seq_client += len(k4_data)
+        timestamp += 0.01
+
+        # Invalid AGC - 5
+        k4_data = "GT5;"
+        pkt = create_k4_packet('192.168.1.52', '192.168.73.108', 54000, 9200,
+                               seq_client, seq_server, psh_ack_flags, k4_data)
+        write_packet(f, timestamp, pkt)
+        seq_client += len(k4_data)
+        timestamp += 0.01
+
+        # Invalid preamp - 9
+        k4_data = "PA9;"
+        pkt = create_k4_packet('192.168.1.52', '192.168.73.108', 54000, 9200,
+                               seq_client, seq_server, psh_ack_flags, k4_data)
+        write_packet(f, timestamp, pkt)
+        seq_client += len(k4_data)
+        timestamp += 0.01
+
+        # Invalid ATU - 9
+        k4_data = "AT9;"
+        pkt = create_k4_packet('192.168.1.52', '192.168.73.108', 54000, 9200,
+                               seq_client, seq_server, psh_ack_flags, k4_data)
+        write_packet(f, timestamp, pkt)
+
 if __name__ == '__main__':
     import os
 
@@ -405,6 +479,7 @@ if __name__ == '__main__':
     generate_panadapter()
     generate_mixed_session()
     generate_om_hardware()
+    generate_invalid_data()
 
     print()
     print("Sample PCAP files generated successfully!")

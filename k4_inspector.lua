@@ -276,7 +276,7 @@ local function parse_if_command(msg, subtree, buffer, offset)
         -- Validate frequency range
         local warning = validate_frequency(freq)
         if warning then
-            freq_item:add_expert_info(PI_MALFORMED, PI_WARN, warning)
+            freq_item:append_text(" " .. warning)
         end
 
         table.insert(info_parts, format_frequency(freq))
@@ -333,7 +333,7 @@ local function parse_if_command(msg, subtree, buffer, offset)
         -- Validate mode value
         local warning = validate_mode(mode_val)
         if warning then
-            mode_item:add_expert_info(PI_MALFORMED, PI_WARN, warning)
+            mode_item:append_text(" " .. warning)
         end
 
         if mode_names[mode_val] then
@@ -491,7 +491,7 @@ local function parse_frequency(cmd, data, msg_subtree, buffer, offset, data_star
             -- Validate frequency range
             local warning = validate_frequency(freq)
             if warning then
-                freq_item:add_expert_info(PI_MALFORMED, PI_WARN, warning)
+                freq_item:append_text(" " .. warning)
             end
 
             return cmd .. " " .. format_frequency(freq)
@@ -534,7 +534,7 @@ local function parse_named_value(cmd, data, field, names, validator)
             if validator then
                 local warning = validator(val)
                 if warning then
-                    item:add_expert_info(PI_MALFORMED, PI_WARN, warning)
+                    item:append_text(" " .. warning)
                 end
             end
 
