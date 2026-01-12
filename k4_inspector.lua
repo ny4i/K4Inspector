@@ -120,6 +120,20 @@ fields.line_in_usb = ProtoField.uint16("k4direct.line_in_usb", "Line In USB-B Le
 fields.line_in_line = ProtoField.uint16("k4direct.line_in_line", "Line In Jack Level", base.DEC)
 fields.line_in_source = ProtoField.uint8("k4direct.line_in_source", "Line In Source", base.DEC)
 
+-- Batch 4: Alternate format commands
+fields.noise_blanker_level = ProtoField.uint8("k4direct.nb_level", "Noise Blanker Level", base.DEC)
+fields.noise_blanker_state = ProtoField.bool("k4direct.nb_state", "Noise Blanker State")
+fields.manual_notch_pitch = ProtoField.uint16("k4direct.nm_pitch", "Manual Notch Pitch (Hz)", base.DEC)
+fields.manual_notch_state = ProtoField.bool("k4direct.nm_state", "Manual Notch State")
+fields.noise_reduction_level = ProtoField.uint8("k4direct.nr_level", "Noise Reduction Level", base.DEC)
+fields.noise_reduction_state = ProtoField.bool("k4direct.nr_state", "Noise Reduction State")
+fields.preamp_type = ProtoField.uint8("k4direct.preamp_type", "Preamp Type", base.DEC)
+fields.preamp_state = ProtoField.bool("k4direct.preamp_state", "Preamp State")
+fields.pl_tone_number = ProtoField.uint8("k4direct.pl_tone", "PL Tone Number", base.DEC)
+fields.pl_tone_state = ProtoField.bool("k4direct.pl_state", "PL Tone State")
+fields.rx_atten_db = ProtoField.uint8("k4direct.rx_atten", "RX Attenuator (dB)", base.DEC)
+fields.rx_atten_state = ProtoField.bool("k4direct.rx_atten_state", "RX Attenuator State")
+
 -- Mode value strings
 local mode_names = {
     [0] = "None",
@@ -267,6 +281,30 @@ local line_out_mode_names = {
 local line_in_source_names = {
     [0] = "USB-B (Sound Card)",
     [1] = "LINE IN Jack"
+}
+
+-- Batch 4: Alternate format command lookup tables
+
+-- Preamp type names (PA$ command)
+local preamp_type_names = {
+    [0] = "Off",
+    [1] = "10 dB",
+    [2] = "18 dB / 20 dB LNA",
+    [3] = "10 dB + 20 dB LNA (12-6m)"
+}
+
+-- PL/CTCSS tone frequencies (PL$ command)
+local pl_tone_freqs = {
+    [1] = 67.0, [2] = 69.3, [3] = 71.9, [4] = 74.4, [5] = 77.0,
+    [6] = 79.7, [7] = 82.5, [8] = 85.4, [9] = 88.5, [10] = 91.5,
+    [11] = 94.8, [12] = 97.4, [13] = 100.0, [14] = 103.5, [15] = 107.2,
+    [16] = 110.9, [17] = 114.8, [18] = 118.8, [19] = 123.0, [20] = 127.3,
+    [21] = 131.8, [22] = 136.5, [23] = 141.3, [24] = 146.2, [25] = 151.4,
+    [26] = 156.7, [27] = 159.8, [28] = 162.2, [29] = 165.5, [30] = 167.9,
+    [31] = 171.3, [32] = 173.8, [33] = 177.3, [34] = 179.9, [35] = 183.5,
+    [36] = 186.2, [37] = 189.9, [38] = 192.8, [39] = 196.6, [40] = 199.5,
+    [41] = 203.5, [42] = 206.5, [43] = 210.7, [44] = 218.1, [45] = 225.7,
+    [46] = 229.1, [47] = 233.6, [48] = 241.8, [49] = 250.3, [50] = 254.1
 }
 
 -- Menu parameter names (ME command)
@@ -1220,6 +1258,186 @@ local function parse_line_in(cmd, data, msg_subtree, buffer, offset, data_start)
 end
 
 -- =============================================================================
+-- BATCH 4: ALTERNATE FORMAT COMMANDS
+-- =============================================================================
+
+-- Parse NB$ command (Noise Blanker)
+-- Format: NB$nnm; (full) or NB$m; (alternate) where nn=level (0-15), m=on/off (0/1)
+local function parse_noise_blanker(cmd, data, msg_subtree, buffer, offset, data_start)
+    -- Strip leading $ if present
+    if data:sub(1, 1) == "$" then
+        data = data:sub(2)
+        data_start = data_start + 1
+    end
+
+    if #data >= 3 then
+        -- Full format: NB$nnm;
+        local level = tonumber(data:sub(1, 2))
+        local state = tonumber(data:sub(3, 3))
+
+        if level and state then
+            msg_subtree:add(fields.noise_blanker_level, buffer(offset + data_start - 1, 2), level)
+            msg_subtree:add(fields.noise_blanker_state, buffer(offset + data_start + 1, 1), state == 1)
+            return string.format("NB Level:%d %s", level, state == 1 and "ON" or "OFF")
+        end
+    elseif #data >= 1 then
+        -- Alternate format: NB$m;
+        local state = tonumber(data:sub(1, 1))
+
+        if state then
+            msg_subtree:add(fields.noise_blanker_state, buffer(offset + data_start - 1, 1), state == 1)
+            return string.format("NB %s", state == 1 and "ON" or "OFF")
+        end
+    end
+    return cmd
+end
+
+-- Parse NM$ command (Manual Notch)
+-- Format: NM$nnnnm; (full) or NM$m; (alternate) where nnnn=pitch (150-5000 Hz), m=on/off
+local function parse_manual_notch(cmd, data, msg_subtree, buffer, offset, data_start)
+    -- Strip leading $ if present
+    if data:sub(1, 1) == "$" then
+        data = data:sub(2)
+        data_start = data_start + 1
+    end
+
+    if #data >= 5 then
+        -- Full format: NM$nnnnm;
+        local pitch = tonumber(data:sub(1, 4))
+        local state = tonumber(data:sub(5, 5))
+
+        if pitch and state then
+            msg_subtree:add(fields.manual_notch_pitch, buffer(offset + data_start - 1, 4), pitch)
+            msg_subtree:add(fields.manual_notch_state, buffer(offset + data_start + 3, 1), state == 1)
+            return string.format("NM %d Hz %s", pitch, state == 1 and "ON" or "OFF")
+        end
+    elseif #data >= 1 then
+        -- Alternate format: NM$m;
+        local state = tonumber(data:sub(1, 1))
+
+        if state then
+            msg_subtree:add(fields.manual_notch_state, buffer(offset + data_start - 1, 1), state == 1)
+            return string.format("NM %s", state == 1 and "ON" or "OFF")
+        end
+    end
+    return cmd
+end
+
+-- Parse NR$ command (Noise Reduction)
+-- Format: NR$nnm; where nn=level (0-10), m=on/off (0/1)
+local function parse_noise_reduction(cmd, data, msg_subtree, buffer, offset, data_start)
+    -- Strip leading $ if present
+    if data:sub(1, 1) == "$" then
+        data = data:sub(2)
+        data_start = data_start + 1
+    end
+
+    if #data >= 3 then
+        local level = tonumber(data:sub(1, 2))
+        local state = tonumber(data:sub(3, 3))
+
+        if level and state then
+            msg_subtree:add(fields.noise_reduction_level, buffer(offset + data_start - 1, 2), level)
+            msg_subtree:add(fields.noise_reduction_state, buffer(offset + data_start + 1, 1), state == 1)
+            return string.format("NR Level:%d %s", level, state == 1 and "ON" or "OFF")
+        end
+    end
+    return cmd
+end
+
+-- Parse PA$ command (Preamp)
+-- Format: PA$nm; (full) or PA$n; (type only) where n=type (0/1/2/3), m=on/off (0/1)
+local function parse_preamp(cmd, data, msg_subtree, buffer, offset, data_start)
+    -- Strip leading $ if present
+    if data:sub(1, 1) == "$" then
+        data = data:sub(2)
+        data_start = data_start + 1
+    end
+
+    if #data >= 2 then
+        -- Full format: PA$nm;
+        local ptype = tonumber(data:sub(1, 1))
+        local state = tonumber(data:sub(2, 2))
+
+        if ptype and state then
+            msg_subtree:add(fields.preamp_type, buffer(offset + data_start - 1, 1), ptype)
+            msg_subtree:add(fields.preamp_state, buffer(offset + data_start, 1), state == 1)
+
+            local type_str = preamp_type_names[ptype] or string.format("Type%d", ptype)
+            return string.format("PA %s %s", type_str, state == 1 and "ON" or "OFF")
+        end
+    elseif #data >= 1 then
+        -- Alternate format: PA$n; (type only, no state)
+        local ptype = tonumber(data:sub(1, 1))
+
+        if ptype then
+            msg_subtree:add(fields.preamp_type, buffer(offset + data_start - 1, 1), ptype)
+            local type_str = preamp_type_names[ptype] or string.format("Type%d", ptype)
+            return string.format("PA %s", type_str)
+        end
+    end
+    return cmd
+end
+
+-- Parse PL$ command (PL/CTCSS Tone)
+-- Format: PL$nnm; where nn=tone# (01-50), m=on/off (0/1)
+-- Note: PL doesn't use $ on wire, format is PLnnm;
+local function parse_pl_tone(cmd, data, msg_subtree, buffer, offset, data_start)
+    -- PL doesn't have $ on wire, but strip it if present for consistency
+    if data:sub(1, 1) == "$" then
+        data = data:sub(2)
+        data_start = data_start + 1
+    end
+
+    -- Check if data is exactly 3 digits (nnm format)
+    if #data == 3 then
+        local tone_num = tonumber(data:sub(1, 2))
+        local state = tonumber(data:sub(3, 3))
+
+        if tone_num and state ~= nil then
+            msg_subtree:add(fields.pl_tone_number, buffer(offset + data_start - 1, 2), tone_num)
+            msg_subtree:add(fields.pl_tone_state, buffer(offset + data_start + 1, 1), state == 1)
+
+            local freq = pl_tone_freqs[tone_num]
+            local tone_str = freq and string.format("%.1f Hz", freq) or string.format("Tone#%d", tone_num)
+            return string.format("PL %s %s", tone_str, state == 1 and "ON" or "OFF")
+        end
+    end
+    return cmd
+end
+
+-- Parse RA$ command (RX Attenuator)
+-- Format: RA$nnm; (full) or RA$nn; (dB only) where nn=dB (0/3/6/9/12/15/18/21), m=on/off (0/1)
+local function parse_rx_atten(cmd, data, msg_subtree, buffer, offset, data_start)
+    -- Strip leading $ if present
+    if data:sub(1, 1) == "$" then
+        data = data:sub(2)
+        data_start = data_start + 1
+    end
+
+    if #data >= 3 then
+        -- Full format: RA$nnm;
+        local atten = tonumber(data:sub(1, 2))
+        local state = tonumber(data:sub(3, 3))
+
+        if atten and state then
+            msg_subtree:add(fields.rx_atten_db, buffer(offset + data_start - 1, 2), atten)
+            msg_subtree:add(fields.rx_atten_state, buffer(offset + data_start + 1, 1), state == 1)
+            return string.format("RA %d dB %s", atten, state == 1 and "ON" or "OFF")
+        end
+    elseif #data >= 2 then
+        -- Alternate format: RA$nn; (dB only, no state)
+        local atten = tonumber(data:sub(1, 2))
+
+        if atten then
+            msg_subtree:add(fields.rx_atten_db, buffer(offset + data_start - 1, 2), atten)
+            return string.format("RA %d dB", atten)
+        end
+    end
+    return cmd
+end
+
+-- =============================================================================
 -- COMMAND REGISTRY - Maps command codes to parser functions
 -- =============================================================================
 
@@ -1329,16 +1547,21 @@ local command_parsers = {
     LO = parse_line_out,
     LI = parse_line_in,
 
+    -- Batch 4: Alternate format commands
+    NB = parse_noise_blanker,
+    NM = parse_manual_notch,
+    NR = parse_noise_reduction,
+    PA = parse_preamp,
+    PL = parse_pl_tone,
+    RA = parse_rx_atten,
+
     -- Complex commands (to be implemented)
-    NR = parse_raw, -- Noise Reduction
-    NM = parse_raw, -- Notch Mode
     MA = parse_raw, -- Manual Notch
     TE = parse_eq,
     TA = parse_raw, -- TX Antenna
     RE = parse_eq,
     PC = parse_power_control,
     VX = parse_vox,
-    PL = parse_raw, -- PL Tone
 }
 
 -- Parse individual K4 command using table-driven dispatch
