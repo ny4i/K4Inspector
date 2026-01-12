@@ -82,6 +82,16 @@ fields.eq_band_2400 = ProtoField.int8("k4direct.eq_2400", "2400 Hz", base.DEC)
 fields.eq_band_3200 = ProtoField.int8("k4direct.eq_3200", "3200 Hz", base.DEC)
 fields.vox_mode = ProtoField.string("k4direct.vox_mode", "VOX Mode")
 fields.vox_state = ProtoField.bool("k4direct.vox_state", "VOX State")
+fields.band_independence = ProtoField.bool("k4direct.band_independence", "Band Independence")
+fields.diversity_mode = ProtoField.bool("k4direct.diversity_mode", "Diversity Mode")
+fields.digout1 = ProtoField.bool("k4direct.digout1", "DIGOUT1")
+fields.audio_effects = ProtoField.uint8("k4direct.audio_effects", "Audio Effects", base.DEC)
+fields.auto_notch = ProtoField.bool("k4direct.auto_notch", "Auto Notch")
+fields.tx_delay = ProtoField.uint16("k4direct.tx_delay", "TX Delay (10ms)", base.DEC)
+fields.tx_gain = ProtoField.uint16("k4direct.tx_gain", "TX Gain", base.DEC)
+fields.voice_input = ProtoField.uint8("k4direct.voice_input", "Voice Input Level", base.DEC)
+fields.mic_input = ProtoField.uint8("k4direct.mic_input", "Mic Input", base.DEC)
+fields.vfo_operation = ProtoField.uint8("k4direct.vfo_operation", "VFO Operation", base.DEC)
 
 -- Mode value strings
 local mode_names = {
@@ -148,6 +158,32 @@ local baud_rate_names = {
     [1] = "75 baud (FSK)",
     [2] = "31 baud (PSK)",
     [3] = "63 baud (PSK)"
+}
+
+-- Audio effects names
+local audio_effects_names = {
+    [0] = "Off",
+    [1] = "Delay (Sim Stereo)",
+    [2] = "Pitch-Map"
+}
+
+-- Mic input names
+local mic_input_names = {
+    [0] = "Front Mic",
+    [1] = "Rear Mic",
+    [2] = "LINE In",
+    [3] = "Front Mic + LINE In",
+    [4] = "Rear Mic + LINE In"
+}
+
+-- VFO operation names (AB command)
+local vfo_operation_names = {
+    [0] = "FA>FB (freq only)",
+    [1] = "FB>FA (freq only)",
+    [2] = "FA/FB Swap (freq only)",
+    [3] = "All A>B",
+    [4] = "All B>A",
+    [5] = "All A/B Swap"
 }
 
 -- Menu parameter names (ME command)
@@ -958,7 +994,7 @@ local command_parsers = {
     DA = parse_raw,
     SI = parse_raw,
     PS = parse_raw,
-    AB = parse_raw,
+    AB = parse_named_value("AB", nil, fields.vfo_operation, vfo_operation_names),
     AF = parse_raw,
     DM = parse_raw,
     FC = parse_raw,
@@ -966,32 +1002,34 @@ local command_parsers = {
     -- Menu Parameter
     ME = parse_menu,
 
-    -- Missing commands from real capture (add as raw for now)
+    -- Batch 1: Simple commands
+    BI = parse_boolean("BI", nil, fields.band_independence),
+    DV = parse_boolean("DV", nil, fields.diversity_mode),
+    DO = parse_boolean("DO", nil, fields.digout1),
+    FX = parse_named_value("FX", nil, fields.audio_effects, audio_effects_names),
+    NA = parse_boolean("NA", nil, fields.auto_notch),
+    TD = parse_numeric("TD", nil, fields.tx_delay),
+    TG = parse_numeric("TG", nil, fields.tx_gain),
+    VI = parse_numeric("VI", nil, fields.voice_input),
+    MI = parse_named_value("MI", nil, fields.mic_input, mic_input_names),
+
+    -- Complex commands (to be implemented)
     AP = parse_raw, -- Auto Peak
-    TD = parse_raw, -- TX Delay
     NR = parse_raw, -- Noise Reduction
     NM = parse_raw, -- Notch Mode
-    NA = parse_raw, -- Notch Auto
     MA = parse_raw, -- Manual Notch
     IS = parse_raw, -- IF Shift
-    VI = parse_raw, -- Voice Input
     VG = parse_raw, -- VOX Gain
-    TG = parse_raw, -- TX Gain
     TE = parse_eq,
     TA = parse_raw, -- TX Antenna
     SD = parse_raw, -- CW Sidetone
     RE = parse_eq,
     PC = parse_power_control,
     MS = parse_raw, -- Monitor/Sidetone
-    MI = parse_raw, -- Mic Input
     LO = parse_raw, -- Lock
     LI = parse_raw, -- Line Input
     KP = parse_raw, -- Keyer Paddle
-    FX = parse_raw, -- Fixed/Tracking
     ES = parse_raw, -- Error Status
-    DV = parse_raw, -- Diversity
-    DO = parse_raw, -- Data Output
-    BI = parse_raw, -- Band Info
     VX = parse_vox,
     PL = parse_raw, -- PL Tone
     FI = parse_raw, -- Filter
