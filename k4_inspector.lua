@@ -68,6 +68,8 @@ fields.vfo_lock = ProtoField.bool("k4direct.vfo_lock", "VFO Lock")
 fields.subrx_enabled = ProtoField.bool("k4direct.subrx_enabled", "Sub RX Enabled")
 fields.spot_enabled = ProtoField.bool("k4direct.spot_enabled", "Spot Enabled")
 fields.data_baud_rate = ProtoField.uint8("k4direct.data_baud_rate", "Data Baud Rate", base.DEC)
+fields.menu_id = ProtoField.uint8("k4direct.menu_id", "Menu ID", base.DEC)
+fields.menu_value = ProtoField.uint16("k4direct.menu_value", "Menu Value", base.DEC)
 
 -- Mode value strings
 local mode_names = {
@@ -134,6 +136,99 @@ local baud_rate_names = {
     [1] = "75 baud (FSK)",
     [2] = "31 baud (PSK)",
     [3] = "63 baud (PSK)"
+}
+
+-- Menu parameter names (ME command)
+local menu_names = {
+    [1] = "Speaker, Internal",
+    [2] = "TX ALC",
+    [3] = "Fan Speed Min",
+    [4] = "KAT4 ATU Option",
+    [5] = "KRX4 2ND RX Option",
+    [6] = "KPA4 PA Option",
+    [7] = "AGC Hold Time",
+    [8] = "AGC Decay, Slow",
+    [9] = "AGC Decay, Fast",
+    [10] = "AGC Threshold",
+    [11] = "AGC Attack",
+    [12] = "AGC Slope",
+    [13] = "AGC Noise Pulse Reject",
+    [14] = "TX 2-Tone Generator",
+    [15] = "TX Gain Cal via TUNE",
+    [27] = "Wattmeter Cal",
+    [28] = "TX Gain Cal",
+    [30] = "Spectrum Trace Fill",
+    [33] = "Radio Serial Number",
+    [34] = "Radio Type",
+    [36] = "LCD Brightness",
+    [37] = "LED Brightness",
+    [38] = "VFO Counts per Turn",
+    [39] = "AF Limiter (AGC off)",
+    [40] = "Reference Freq",
+    [41] = "VFO B Different Band",
+    [42] = "RIT CLR 2nd Tap Restore",
+    [43] = "IP Address",
+    [44] = "RIT Knob Alt. Function",
+    [45] = "VFO Coarse Tuning",
+    [46] = "Per-Band Power",
+    [48] = "AutoRef Averaging",
+    [49] = "AutoRef Debounce",
+    [50] = "AutoRef Offset",
+    [52] = "TX DLY, Key Out to RF Out",
+    [53] = "TX Inhibit Mode",
+    [54] = "Serial RS232: DTR",
+    [55] = "Serial RS232: RTS",
+    [57] = "Serial RS232: Baud Rate",
+    [58] = "Serial USB-PC1: DTR",
+    [59] = "Serial USB-PC1: RTS",
+    [60] = "Serial USB-PC1: Baud Rate",
+    [61] = "Serial USB-PC2: DTR",
+    [62] = "Serial USB-PC2: RTS",
+    [63] = "Serial USB-PC2: Baud Rate",
+    [64] = "FSK Dual-Tone RX Filter",
+    [65] = "Serial RS232: Auto Info",
+    [66] = "Serial USB-PC1: Auto Info",
+    [67] = "Serial USB-PC2: Auto Info",
+    [69] = "TUNE LP (Low power TUNE)",
+    [70] = "Ext. Monitor Function",
+    [71] = "Ext. Monitor Location",
+    [72] = "Speakers + Phones",
+    [73] = "RX Auto Attenuation",
+    [74] = "Mouse L/R Button QSY",
+    [75] = "XVTR OUT Test",
+    [76] = "XVTR Band <n> Mode",
+    [77] = "XVTR Band <n> R.F.",
+    [78] = "XVTR Band <n> I.F.",
+    [79] = "XVTR Band <n> Offset",
+    [80] = "Screen Cap File",
+    [83] = "Speakers, External",
+    [84] = "FSK Polarity",
+    [85] = "FSK Mark-Tone",
+    [86] = "XVTR Band # Select",
+    [87] = "Message Repeat Interval",
+    [88] = "FM Deviation, Voice",
+    [89] = "FM Deviation, Tone",
+    [90] = "Spectrum Freq. Marks",
+    [91] = "RX 1.5 MHz High-Pass Fil.",
+    [92] = "Spectrum Amplitude Units",
+    [93] = "Preamp 3 (12/10/6 m)",
+    [97] = "RX Dyn. Range Optimization",
+    [98] = "XVTR Band <n> Power Out",
+    [100] = "DIGOUT1 (ACC jack, pin 11)",
+    [101] = "TX Monitor Level, Line Out",
+    [102] = "RX CW IIR Filters (50-200 Hz)",
+    [103] = "TX Noise Gate Threshold",
+    [104] = "CW TX in SSB Mode",
+    [105] = "RX Audio Mix with Sub On",
+    [106] = "RX All-Mode Squelch",
+    [107] = "Mouse Pointer Size, LCD",
+    [108] = "TX Audio LF Cutoff, SSB",
+    [109] = "Mouse Pointer Size, Ext. Mon.",
+    [110] = "TX DLY, Unkey to Receive",
+    [111] = "TX QSK Method",
+    [112] = "TX Monitor Method, Voice",
+    [113] = "RX Audio Gain Boost",
+    [114] = "TX Monitor Level, Remote"
 }
 
 -- Format frequency for display
@@ -624,6 +719,41 @@ local function parse_id(cmd, data, msg_subtree, buffer, offset, data_start)
     return cmd
 end
 
+-- Parse ME command (Menu Parameter)
+-- Format: MEiiii.nnnn; where iiii=menu ID, nnnn=value
+local function parse_menu(cmd, data, msg_subtree, buffer, offset, data_start)
+    local dot_pos = data:find("%.")
+    if dot_pos and #data >= dot_pos then
+        local menu_id_str = data:sub(1, dot_pos - 1)
+        local menu_val_str = data:sub(dot_pos + 1)
+
+        local menu_id = tonumber(menu_id_str)
+        local menu_val = tonumber(menu_val_str)
+
+        if menu_id and menu_val then
+            -- Add menu ID field
+            local id_item = msg_subtree:add(fields.menu_id, buffer(offset + data_start - 1, #menu_id_str), menu_id)
+            if menu_names[menu_id] then
+                id_item:append_text(" (" .. menu_names[menu_id] .. ")")
+            end
+
+            -- Add menu value field
+            msg_subtree:add(fields.menu_value, buffer(offset + data_start - 1 + dot_pos, #menu_val_str), menu_val)
+
+            -- Build info string
+            local info = "ME "
+            if menu_names[menu_id] then
+                info = info .. menu_names[menu_id] .. " = " .. menu_val
+            else
+                info = info .. menu_id .. " = " .. menu_val
+            end
+
+            return info
+        end
+    end
+    return cmd
+end
+
 -- =============================================================================
 -- COMMAND REGISTRY - Maps command codes to parser functions
 -- =============================================================================
@@ -706,8 +836,10 @@ local command_parsers = {
     DM = parse_raw,
     FC = parse_raw,
 
+    -- Menu Parameter
+    ME = parse_menu,
+
     -- Missing commands from real capture (add as raw for now)
-    ME = parse_raw, -- Menu Entry
     AP = parse_raw, -- Auto Peak
     TD = parse_raw, -- TX Delay
     NR = parse_raw, -- Noise Reduction
