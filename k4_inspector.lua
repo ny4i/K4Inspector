@@ -70,6 +70,8 @@ fields.spot_enabled = ProtoField.bool("k4direct.spot_enabled", "Spot Enabled")
 fields.data_baud_rate = ProtoField.uint8("k4direct.data_baud_rate", "Data Baud Rate", base.DEC)
 fields.menu_id = ProtoField.uint8("k4direct.menu_id", "Menu ID", base.DEC)
 fields.menu_value = ProtoField.uint16("k4direct.menu_value", "Menu Value", base.DEC)
+fields.power_control = ProtoField.uint16("k4direct.power_control", "Power Control", base.DEC)
+fields.power_range = ProtoField.string("k4direct.power_range", "Power Range")
 
 -- Mode value strings
 local mode_names = {
@@ -754,6 +756,50 @@ local function parse_menu(cmd, data, msg_subtree, buffer, offset, data_start)
     return cmd
 end
 
+-- Parse PC command (Power Control)
+-- Format: PCnnnr; where nnn=power (3 digits), r=range (L/H/X, optional, defaults to L)
+local function parse_power_control(cmd, data, msg_subtree, buffer, offset, data_start)
+    if #data >= 3 then
+        local power_str = data:sub(1, 3)
+        local range_char = "L"  -- Default to Low range if omitted
+
+        if #data >= 4 then
+            local last_char = data:sub(4, 4)
+            if last_char == "L" or last_char == "H" or last_char == "X" then
+                range_char = last_char
+            end
+        end
+
+        local power_raw = tonumber(power_str)
+        if power_raw then
+            -- Add power value field
+            msg_subtree:add(fields.power_control, buffer(offset + data_start - 1, 3), power_raw)
+
+            -- Add range field
+            local range_item = msg_subtree:add(fields.power_range, buffer(offset + data_start - 1, #data), range_char)
+
+            -- Calculate actual power based on range
+            local power_display
+            local range_name
+            if range_char == "L" then
+                power_display = string.format("%.1f W", power_raw / 10.0)
+                range_name = "Low (QRP 0.1-10.0 W)"
+            elseif range_char == "H" then
+                power_display = string.format("%.0f W", power_raw)
+                range_name = "High (QRO 1-110 W)"
+            elseif range_char == "X" then
+                power_display = string.format("%.1f mW", power_raw / 10.0)
+                range_name = "Milliwatt (XVTR 0.1-10.0 mW)"
+            end
+
+            range_item:append_text(" (" .. range_name .. ")")
+
+            return "PC " .. power_display .. " (" .. range_char .. ")"
+        end
+    end
+    return cmd
+end
+
 -- =============================================================================
 -- COMMAND REGISTRY - Maps command codes to parser functions
 -- =============================================================================
@@ -854,7 +900,7 @@ local command_parsers = {
     TA = parse_raw, -- TX Antenna
     SD = parse_raw, -- CW Sidetone
     RE = parse_raw, -- Receiver Enable
-    PC = parse_raw, -- Power Control
+    PC = parse_power_control,
     MS = parse_raw, -- Monitor/Sidetone
     MI = parse_raw, -- Mic Input
     LO = parse_raw, -- Lock
