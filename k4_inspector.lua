@@ -72,6 +72,14 @@ fields.menu_id = ProtoField.uint8("k4direct.menu_id", "Menu ID", base.DEC)
 fields.menu_value = ProtoField.uint16("k4direct.menu_value", "Menu Value", base.DEC)
 fields.power_control = ProtoField.uint16("k4direct.power_control", "Power Control", base.DEC)
 fields.power_range = ProtoField.string("k4direct.power_range", "Power Range")
+fields.eq_band_100 = ProtoField.int8("k4direct.eq_100", "100 Hz", base.DEC)
+fields.eq_band_200 = ProtoField.int8("k4direct.eq_200", "200 Hz", base.DEC)
+fields.eq_band_400 = ProtoField.int8("k4direct.eq_400", "400 Hz", base.DEC)
+fields.eq_band_800 = ProtoField.int8("k4direct.eq_800", "800 Hz", base.DEC)
+fields.eq_band_1200 = ProtoField.int8("k4direct.eq_1200", "1200 Hz", base.DEC)
+fields.eq_band_1600 = ProtoField.int8("k4direct.eq_1600", "1600 Hz", base.DEC)
+fields.eq_band_2400 = ProtoField.int8("k4direct.eq_2400", "2400 Hz", base.DEC)
+fields.eq_band_3200 = ProtoField.int8("k4direct.eq_3200", "3200 Hz", base.DEC)
 
 -- Mode value strings
 local mode_names = {
@@ -756,6 +764,49 @@ local function parse_menu(cmd, data, msg_subtree, buffer, offset, data_start)
     return cmd
 end
 
+-- Parse EQ command (TE - TX EQ, RE - RX EQ)
+-- Format: CMDabcdefgh; where a-h are 3-char signed values (-16 to +16 dB)
+-- Bands: a=100Hz, b=200Hz, c=400Hz, d=800Hz, e=1200Hz, f=1600Hz, g=2400Hz, h=3200Hz
+local function parse_eq(cmd, data, msg_subtree, buffer, offset, data_start)
+    if #data >= 24 then  -- 8 bands * 3 chars each
+        local eq_fields = {
+            {fields.eq_band_100, "100 Hz"},
+            {fields.eq_band_200, "200 Hz"},
+            {fields.eq_band_400, "400 Hz"},
+            {fields.eq_band_800, "800 Hz"},
+            {fields.eq_band_1200, "1200 Hz"},
+            {fields.eq_band_1600, "1600 Hz"},
+            {fields.eq_band_2400, "2400 Hz"},
+            {fields.eq_band_3200, "3200 Hz"}
+        }
+
+        local eq_type = (cmd == "TE") and "TX EQ" or "RX EQ"
+        local eq_values = {}
+        local all_flat = true
+
+        for i = 1, 8 do
+            local band_start = (i - 1) * 3 + 1
+            local band_str = data:sub(band_start, band_start + 2)
+            local band_val = tonumber(band_str)
+
+            if band_val then
+                msg_subtree:add(eq_fields[i][1], buffer(offset + data_start - 1 + band_start - 1, 3), band_val)
+                table.insert(eq_values, string.format("%s:%+d dB", eq_fields[i][2], band_val))
+                if band_val ~= 0 then
+                    all_flat = false
+                end
+            end
+        end
+
+        if all_flat then
+            return eq_type .. " Flat"
+        else
+            return eq_type .. " (" .. table.concat(eq_values, ", ") .. ")"
+        end
+    end
+    return cmd
+end
+
 -- Parse PC command (Power Control)
 -- Format: PCnnnr; where nnn=power (3 digits), r=range (L/H/X, optional, defaults to L)
 local function parse_power_control(cmd, data, msg_subtree, buffer, offset, data_start)
@@ -896,10 +947,10 @@ local command_parsers = {
     VI = parse_raw, -- Voice Input
     VG = parse_raw, -- VOX Gain
     TG = parse_raw, -- TX Gain
-    TE = parse_raw, -- TX Enable
+    TE = parse_eq,
     TA = parse_raw, -- TX Antenna
     SD = parse_raw, -- CW Sidetone
-    RE = parse_raw, -- Receiver Enable
+    RE = parse_eq,
     PC = parse_power_control,
     MS = parse_raw, -- Monitor/Sidetone
     MI = parse_raw, -- Mic Input
