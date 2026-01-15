@@ -25,16 +25,12 @@ if ! command -v tshark &> /dev/null; then
     exit 1
 fi
 
-# Check if dissector is installed
-PLUGIN_DIR="$HOME/.local/lib/wireshark/plugins"
-if [ ! -f "$PLUGIN_DIR/k4_inspector.lua" ] && [ ! -f "k4_inspector.lua" ]; then
-    echo "ERROR: k4_inspector.lua not found."
-    echo "Please install the dissector first:"
-    echo "  cp k4_inspector.lua $PLUGIN_DIR/"
+
+
+if [ ! -f "k4inspector/init.lua" ]; then
+    echo "ERROR: k4inspector/init.lua not found."
     exit 1
 fi
-
-echo "Testing all sample captures..."
 echo ""
 
 # Test each PCAP file
@@ -47,7 +43,7 @@ for pcap in "$SAMPLES_DIR"/*.pcap "$SAMPLES_DIR"/*.pcapng; do
     printf "  %-30s " "$filename"
 
     # Run tshark and capture output
-    output=$(tshark -r "$pcap" -Y k4direct -T fields -e k4direct.command 2>&1)
+    output=$(tshark -X lua_script:k4inspector/init.lua -r "$pcap" -Y k4direct -T fields -e k4direct.command 2>&1)
     exit_code=$?
 
     # Check for Lua errors

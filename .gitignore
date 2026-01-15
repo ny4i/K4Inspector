@@ -29,3 +29,6 @@ Desktop.ini
 # Backup files
 *.bak
 *.backup
+
+# Reference documentation (not code)
+commands.txt
