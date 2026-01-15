@@ -177,11 +177,16 @@ Run the automated test suite to verify the dissector works correctly:
 ./run_tests.sh
 ```
 
-This script:
-- Tests all sample captures in `samples/` directory
+This script runs two types of tests:
+
+**1. Smoke Tests** - For each sample capture:
 - Verifies no Lua errors occur during parsing
 - Reports number of commands successfully parsed
-- Returns exit code 0 if all tests pass, 1 if any fail
+
+**2. Golden Master Validation** - For liveK4.pcapng:
+- Compares parsed field values against known-correct output
+- Validates 136 parsed values (frequency, mode, band, etc.)
+- Catches regressions in parsing logic
 
 **Example output:**
 ```
@@ -189,22 +194,34 @@ This script:
 K4Inspector Dissector Automated Tests
 ==========================================
 
-Testing all sample captures...
-
-  liveK4.pcapng                  ✓ PASS (127 commands parsed)
-  basic_commands.pcap            ✓ PASS (5 commands parsed)
-  if_status.pcap                 ✓ PASS (6 commands parsed)
-  panadapter_commands.pcap       ✓ PASS (5 commands parsed)
-  mixed_session.pcap             ✓ PASS (11 commands parsed)
-  om_hardware.pcap               ✓ PASS (6 commands parsed)
+  basic_commands.pcap            ✓ PASS (10 commands parsed)
+  if_status.pcap                 ✓ PASS (11 commands parsed)
+  liveK4.pcapng                  ✓ PASS (141 commands parsed)
+  ...
 
 ==========================================
-Test Results
+Golden Master Validation
 ==========================================
-  Passed: 6
+
+Validating liveK4.pcapng against golden master...
+✓ PASS: All 136 parsed values match golden master
+
+==========================================
+Final Results
+==========================================
+  Smoke tests passed: 7
+  Golden master: 1
   Failed: 0
 
 ✓ All tests passed!
+```
+
+### Updating the Golden Master
+
+If you intentionally change parsing behavior, regenerate the golden master:
+
+```bash
+samples/golden_master_test.sh --generate
 ```
 
 ### Manual Testing

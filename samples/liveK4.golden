@@ -1,0 +1,136 @@
+     1	AI,\r\n								
+     2	AI,\r\n								
+     3	AI								
+     4	BN,\r\n			3					
+     5	BN			3					
+     6	FA	7000000							
+     7	FI								
+     8	#NBL								
+     9	#NB								
+    10	#SPN								
+    11	#REF								
+    12	#HREF								
+    13	BN			3					
+    14	FB	7138730							
+    15	FI								
+    16	#NBL$								
+    17	#NB$								
+    18	#SPN$								
+    19	#REF$								
+    20	#HREF$								
+    21	MD		3						
+    22	AP								
+    23	MD		2						
+    24	AP								
+    25	DT								
+    26	DT								
+    27	FP								
+    28	FP								
+    29	BW								
+    30	BW								
+    31	IS								
+    32	IS								
+    33	GT								
+    34	GT								
+    35	AP								
+    36	NA								
+    37	NA								
+    38	SB								
+    39	#MP								
+    40	#MP$								
+    41	FX								
+    42	AR								
+    43	AR								
+    44	DR								
+    45	DR								
+    46	TD								
+    47	TD								
+    48	SQ								
+    49	SQ								
+    50	NB								
+    51	NB								
+    52	NR								
+    53	NR								
+    54	CP								
+    55	AN								
+    56	TG								
+    57	ME								
+    58	TA								
+    59	RO								
+    60	RO								
+    61	RT						True		
+    62	RT						False		
+    63	NM								
+    64	NM								
+    65	SP								
+    66	MA								
+    67	MA								
+    68	PC								
+    69	RA								
+    70	RA								
+    71	PA								
+    72	PA								
+    73	RE								
+    74	TE								
+    75	SD								
+    76	VX								
+    77	VI								
+    78	VG								
+    79	KP								
+    80	ME								
+    81	RG								
+    82	RG								
+    83	BI								
+    84	ME								
+    85	MI								
+    86	MS								
+    87	LI								
+    88	LO								
+    89	XT							False	
+    90	FT								False
+    91	DV								
+    92	PL								
+    93	PL								
+    94	ES								
+    95	DO								
+    96	ME								
+    97	#REF								
+    98	#HREF								
+    99	#REF$								
+   100	#HREF$								
+   101	#REF								
+   102	#HREF								
+   103	#REF$								
+   104	#HREF$								
+   105	#REF								
+   106	#HREF								
+   107	#REF$								
+   108	#HREF$								
+   109	#REF								
+   110	#HREF								
+   111	#REF$								
+   112	#HREF$								
+   113	#REF								
+   114	#HREF								
+   115	#REF$								
+   116	#HREF$								
+   117	#REF								
+   118	#HREF								
+   119	#REF$								
+   120	#HREF$								
+   121	IF,\r\n								
+   122	IF	7000000	3			False	True	False	False
+   123	BN,\r\n								
+   124	BN			3					
+   125	FA,\r\n								
+   126	FA	7000000							
+   127	FB,\r\n								
+   128	FB	7138730							
+   129	BN								
+   130	\r\n								
+   131	BN								
+   132	BN,\r\n								
+   133	BN			3					
+   134	MD,\r\n								
+   135	MD		2						
+   136	ï¿								

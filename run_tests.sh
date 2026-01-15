@@ -82,6 +82,31 @@ fi
 
 echo ""
 
+# Run golden master validation test
+echo "=========================================="
+echo "Golden Master Validation"
+echo "=========================================="
+echo ""
+
+if [ -f "samples/golden_master_test.sh" ]; then
+    if samples/golden_master_test.sh; then
+        PASS=$((PASS+1))
+    else
+        FAIL=$((FAIL+1))
+    fi
+else
+    echo "⚠ SKIP - Golden master test not found"
+fi
+
+echo ""
+echo "=========================================="
+echo "Final Results"
+echo "=========================================="
+echo "  Smoke tests passed: $((PASS-1))"
+echo "  Golden master: $([ -f samples/golden_master_test.sh ] && echo "1" || echo "0")"
+echo "  Failed: $FAIL"
+echo ""
+
 if [ $FAIL -eq 0 ]; then
     echo "✓ All tests passed!"
     exit 0
