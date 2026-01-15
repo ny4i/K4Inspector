@@ -12,7 +12,10 @@ Decodes ASCII text-based commands used to control the Elecraft K4 amateur radio 
    - In Wireshark, go to **Help** → **About Wireshark** → **Folders** tab
    - Look for "Personal Lua Plugins" path
 
-2. Copy `k4_inspector.lua` to that directory
+2. Copy the entire `k4inspector/` directory to that location:
+   ```bash
+   cp -r k4inspector/ ~/.local/lib/wireshark/plugins/
+   ```
 
 3. Reload Lua plugins in Wireshark:
    - Press `Ctrl+Shift+L` (Windows/Linux) or `Cmd+Shift+L` (macOS)
@@ -20,23 +23,23 @@ Decodes ASCII text-based commands used to control the Elecraft K4 amateur radio 
 
 ### Method 2: Global Plugin Directory
 
-Copy `k4_inspector.lua` to Wireshark's global plugins directory (requires admin/root):
-- **Windows**: `C:\Program Files\Wireshark\plugins\`
-- **macOS**: `/Applications/Wireshark.app/Contents/PlugIns/wireshark/`
-- **Linux**: `/usr/lib/wireshark/plugins/` or `/usr/local/lib/wireshark/plugins/`
+Copy the `k4inspector/` directory to Wireshark's global plugins directory (requires admin/root):
+- **Windows**: `C:\Program Files\Wireshark\plugins\k4inspector\`
+- **macOS**: `/Applications/Wireshark.app/Contents/PlugIns/wireshark/k4inspector/`
+- **Linux**: `/usr/lib/wireshark/plugins/k4inspector/`
 
 ### Method 3: Load Directly
 
 Run Wireshark with the `-X` option:
 ```bash
-wireshark -X lua_script:path/to/k4_inspector.lua
+wireshark -X lua_script:path/to/k4inspector/init.lua
 ```
 
 ## Configuration
 
 The dissector is pre-configured for TCP port **9200** (K4 Direct control port). It also includes a heuristic dissector that can automatically identify K4 traffic on other ports.
 
-To add additional ports, edit `k4_inspector.lua`:
+To add additional ports, edit `k4inspector/init.lua`:
 
 ```lua
 local tcp_port = DissectorTable.get("tcp.port")

@@ -961,13 +961,10 @@ M.command_parsers = {
     MG = M.parse_numeric("MG", nil, k4_fields.mg_gain),
     RG = M.parse_numeric("RG", nil, k4_fields.rg_gain),
     CP = M.parse_numeric("CP", nil, k4_fields.cp_level),
-    NB = M.parse_numeric("NB", nil, k4_fields.nb_level),
     SQ = M.parse_numeric("SQ", nil, k4_fields.sq_level),
 
     -- Signal Processing
     GT = M.parse_named_value("GT", nil, k4_fields.agc_mode, k4_constants.agc_names, k4_validators.validate_agc),
-    PA = M.parse_named_value("PA", nil, k4_fields.preamp, k4_constants.preamp_names, k4_validators.validate_preamp),
-    RA = M.parse_numeric("RA", nil, k4_fields.attenuator, "dB"),
     BW = M.parse_numeric("BW", nil, k4_fields.bandwidth, " Hz"),
 
     -- Antenna & ATU
